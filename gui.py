@@ -269,6 +269,7 @@ class MainWindow(QMainWindow):
         self.sync_worker = None  # For project sync worker
         self.launch_worker = None  # For launching manual jobs
         self.job_data_worker = None  # For fetching job data
+        self.launch_button = None  # For launch button feedback
         self.current_manual_job = None  # For launching manual jobs
         self._loading_state = 0  # For loading animation
         self._loading_text = "·"  # For loading animation
@@ -344,11 +345,11 @@ class MainWindow(QMainWindow):
         launch_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         launch_label = QLabel("This job is manual and not started.")
         launch_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        launch_button = QPushButton("Launch Job")
-        launch_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        launch_button.clicked.connect(self._launch_manual_job)
+        self.launch_button = QPushButton("Launch Job")
+        self.launch_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.launch_button.clicked.connect(self._launch_manual_job)
         launch_layout.addWidget(launch_label)
-        launch_layout.addWidget(launch_button)
+        launch_layout.addWidget(self.launch_button)
 
         # Stacked widget for right side
         self.right_stack = QStackedWidget()
@@ -401,6 +402,10 @@ class MainWindow(QMainWindow):
         # Check if already launching
         if self.launch_worker and self.launch_worker.isRunning():
             return
+        # Update button to show launching state
+        if self.launch_button:
+            self.launch_button.setText("Launching...")
+            self.launch_button.setEnabled(False)
         # Use worker to launch
         self.launch_worker = LaunchWorker(self.gitlab_manager, proj_id, job_id)
         self.launch_worker.launch_done.connect(self._on_launch_done)
@@ -599,6 +604,10 @@ class MainWindow(QMainWindow):
         """Called when a manual job launch succeeds"""
         print("Job launched successfully")
         self.launch_worker = None
+        # Reset button
+        if self.launch_button:
+            self.launch_button.setText("Launch Job")
+            self.launch_button.setEnabled(True)
         # Refresh projects to update status
         self.update_projects(force_update=True)
         # Switch back to log view and show message
@@ -609,6 +618,10 @@ class MainWindow(QMainWindow):
         """Called when a manual job launch fails"""
         print(f"Launch error: {error}")
         self.launch_worker = None
+        # Reset button
+        if self.launch_button:
+            self.launch_button.setText("Launch Job")
+            self.launch_button.setEnabled(True)
         QMessageBox.warning(self, "Launch Error", f"Failed to launch job: {error}")
         # Switch back to log view
         self.right_stack.setCurrentIndex(0)
@@ -1316,7 +1329,7 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_projects)
         # Commencer avec un intervalle plus long après le chargement initial
-        QTimer.singleShot(10000, lambda: self.timer.start(3000))  # Attendre 10s puis mettre à jour toutes les 15s
+        QTimer.singleShot(10000, lambda: self.timer.start(3000))  # Attendre 10s puis mettre à jour toutes les 3s
 
         self.loading_timer = QTimer(self)
         self.loading_timer.timeout.connect(self._animate_loading_dots)
