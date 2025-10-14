@@ -375,6 +375,14 @@ class MainWindow(QMainWindow):
         projects_label = QLabel("Select projects to monitor (max 10):")
         layout.addWidget(projects_label)
 
+        # Search field
+        search_label = QLabel("Search projects:")
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("Filter by name or ID...")
+        self.search_edit.textChanged.connect(self._filter_projects)
+        layout.addWidget(search_label)
+        layout.addWidget(self.search_edit)
+
         self.projects_list = QListWidget()
         self.projects_list.itemChanged.connect(self._limit_selection)
         layout.addWidget(self.projects_list)
@@ -403,7 +411,7 @@ class MainWindow(QMainWindow):
         # Auto-sync removed to prevent freezing
 
         # Option UI
-        auto_select_label = QLabel("Sélectionner automatiquement les pipelines mises à jour:")
+        auto_select_label = QLabel("Afficher automatiquement la dernière pipeline qui reçoit une mise à jour:")
         self.auto_select_checkbox = QCheckBox()
         self.auto_select_checkbox.setChecked(self.auto_select_updated)
         layout.addWidget(auto_select_label)
@@ -482,6 +490,13 @@ class MainWindow(QMainWindow):
         self.sync_button.setText("Sync Projects")
         self.sync_button.setEnabled(True)
 
+    def _filter_projects(self, text):
+        text = text.lower()
+        for i in range(self.projects_list.count()):
+            item = self.projects_list.item(i)
+            visible = text in item.text().lower()
+            item.setHidden(not visible)
+
     def _limit_selection(self, item):
         checked_count = 0
         for i in range(self.projects_list.count()):
@@ -499,7 +514,6 @@ class MainWindow(QMainWindow):
         if not self.project_items:
             self.tree.clear()
 
-        current_time = int(time.time())
 
         for proj_id in self.projects:
             # Si le projet existe déjà et qu'on ne force pas la mise à jour
@@ -537,6 +551,30 @@ class MainWindow(QMainWindow):
             worker.start()
 
             self.project_workers[proj_id] = worker
+
+        # Remove projects no longer selected
+        to_remove = []
+        for proj_id, item in self.project_items.items():
+            if proj_id not in self.projects:
+                self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(item))
+                to_remove.append(proj_id)
+
+        for proj_id in to_remove:
+            del self.project_items[proj_id]
+            if proj_id in self.project_workers:
+                worker = self.project_workers[proj_id]
+                if worker.isRunning():
+                    worker.stop()
+                    worker.wait()
+                del self.project_workers[proj_id]
+            # Remove job workers for this project
+            keys_to_remove = [k for k in self.job_status_workers if k[0] == proj_id]
+            for k in keys_to_remove:
+                worker = self.job_status_workers[k]
+                if worker.isRunning():
+                    worker.stop()
+                    worker.wait()
+                del self.job_status_workers[k]
 
     def _fetch_project_data(self, proj_id):
         """Fonction exécutée dans un thread pour récupérer les données du projet"""
