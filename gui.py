@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QDialog, QLabel,
-    QLineEdit, QDialogButtonBox
+    QLineEdit, QDialogButtonBox, QCheckBox
 )
 from PyQt6.QtGui import QAction, QTextCharFormat, QColor, QTextCursor, QFont, QFontDatabase
 from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal, QStandardPaths, QEventLoop
@@ -62,39 +62,20 @@ class LogWorker(QThread):
                 return
             
             # Vérifier l'état actuel du job
-            status_worker = HttpWorker(
-                self._get_job_status,
-                self.project_id,
-                self.job_id
-            )
-            
-            # Utiliser un QEventLoop pour attendre la réponse de manière asynchrone
-            loop = QEventLoop()
-            status_worker.finished.connect(loop.quit)
-            status_worker.error.connect(lambda e: (self.error_occurred.emit(str(e)), loop.quit()))
-            status_worker.start()
-            loop.exec()
+            status = self._get_job_status(self.project_id, self.job_id)
+            if status is None:
+                self._is_running = False
+                return
             
             # Charger les logs au moins une fois, même si le job est terminé
             if not logs_loaded or self._job_status not in ['success', 'failed', 'canceled', 'skipped']:
-                # Récupérer les logs
-                self.worker = HttpWorker(
-                    self.gitlab_manager.get_job_trace,
-                    self.project_id,
-                    self.job_id
-                )
-                
-                # Connecter les signaux
-                self.worker.finished.connect(self._on_log_received)
-                self.worker.error.connect(lambda e: self.error_occurred.emit(str(e)))
-                
-                # Lancer le worker et attendre qu'il termine
-                self.worker.start()
-                logs_loaded = True
-                
-                # Attendre que le worker ait terminé
-                while self.worker.isRunning() and self._is_running:
-                    self.msleep(100)  # Vérifier toutes les 100ms
+                try:
+                    trace = self.gitlab_manager.get_job_trace(self.project_id, self.job_id)
+                    self._on_log_received(trace)
+                    logs_loaded = True
+                except Exception as e:
+                    self.error_occurred.emit(str(e))
+                    logs_loaded = True  # Pour éviter de retry en boucle
             
             # Si le job est terminé, on arrête la boucle
             if self._job_status in ['success', 'failed', 'canceled', 'skipped']:
@@ -103,17 +84,14 @@ class LogWorker(QThread):
                 break
                 
             # Attendre avant la prochaine itération
-            self.msleep(2000)  # 2 secondes
+            self.msleep(500)  # Vérifier toutes les 0.5 secondes pour les logs
     
     def _on_log_received(self, log):
-        if self._is_running and hasattr(self.sender(), 'result'):
-            self.log_ready.emit(self.sender().result)
+        if self._is_running:
+            self.log_ready.emit(log)
     
     def stop(self):
         self._is_running = False
-        if self.worker and self.worker.isRunning():
-            self.worker.stop()
-            self.worker.wait()
     
     def _get_job_status(self, project_id, job_id):
         """Récupère le statut d'un job spécifique"""
@@ -124,11 +102,46 @@ class LogWorker(QThread):
             return self._job_status
         except Exception as e:
             print(f"Erreur lors de la récupération du statut du job: {e}")
-            self.error_occurred.emit(f"Erreur lors de la récupération du statut du job: {e}")
+            # Ne pas émettre ici, géré dans run()
             return None
     
     def get_job_status(self):
         return self._job_status
+
+
+class JobStatusWorker(QThread):
+    """Worker pour surveiller le statut d'un job spécifique"""
+    status_updated = pyqtSignal(str)
+    
+    def __init__(self, gitlab_manager, proj_id, job_id, job_item):
+        super().__init__()
+        self.gitlab_manager = gitlab_manager
+        self.proj_id = proj_id
+        self.job_id = job_id
+        self.job_item = job_item  # Référence à l'item QTreeWidgetItem pour mise à jour
+        self._is_running = True
+    
+    def run(self):
+        while self._is_running:
+            try:
+                project = self.gitlab_manager.get_project(self.proj_id)
+                job = project.jobs.get(self.job_id)
+                status = job.status
+                self.status_updated.emit(status)
+                
+                # Si le job est terminé, arrêter le worker
+                if status in ['success', 'failed', 'canceled', 'skipped']:
+                    self._is_running = False
+                    break
+            except Exception as e:
+                print(f"Erreur mise à jour statut job {self.job_id}: {e}")
+                self._is_running = False
+                break
+            
+            self.msleep(2000)  # Vérifier toutes les 2 secondes
+    
+    def stop(self):
+        self._is_running = False
 
 
 class MainWindow(QMainWindow):
@@ -141,12 +154,14 @@ class MainWindow(QMainWindow):
         self.log_worker = None
         self.project_workers = {}  # Dictionnaire pour suivre les workers par projet
         self.project_items = {}  # Pour garder une référence aux items de projet
+        self.job_status_workers = {}  # Dictionnaire pour suivre les workers de statut par (proj_id, job_id)
         self.config = configparser.ConfigParser()
         self.config_file = os.path.join(
             QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppConfigLocation),
             'gitlab_pipelines_manager.ini'
         )
         os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
+        self.auto_select_updated = True  # Par défaut activé
         self.setup_ui()
         
         # Configuration simple de la police
@@ -238,6 +253,10 @@ class MainWindow(QMainWindow):
                         self.log_view.setPlainText(f"Erreur lors du chargement de la configuration : {str(e)}")
                 else:
                     self.log_view.setPlainText("Veuillez configurer l'URL GitLab et le token dans les paramètres.")
+            
+            # Charger l'option UI
+            if 'UI' in self.config:
+                self.auto_select_updated = self.config.getboolean('UI', 'auto_select_updated', fallback=True)
         else:
             self.log_view.setPlainText("Bienvenue ! Veuillez configurer l'application dans le menu Paramètres.")
 
@@ -248,6 +267,11 @@ class MainWindow(QMainWindow):
         self.config['GitLab']['url'] = url
         self.config['GitLab']['token'] = token
         self.config['GitLab']['projects'] = ','.join(str(p) for p in projects)
+        
+        # Sauvegarder l'option UI
+        if not self.config.has_section('UI'):
+            self.config.add_section('UI')
+        self.config.set('UI', 'auto_select_updated', str(self.auto_select_updated))
         
         with open(self.config_file, 'w') as f:
             self.config.write(f)
@@ -278,6 +302,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(projects_label)
         layout.addWidget(self.projects_edit)
         
+        # Option UI
+        auto_select_label = QLabel("Sélectionner automatiquement les pipelines mises à jour:")
+        self.auto_select_checkbox = QCheckBox()
+        self.auto_select_checkbox.setChecked(self.auto_select_updated)
+        layout.addWidget(auto_select_label)
+        layout.addWidget(self.auto_select_checkbox)
+        
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
@@ -288,6 +319,8 @@ class MainWindow(QMainWindow):
             token = self.token_edit.text().strip()
             projects_str = self.projects_edit.text()
             projects = [p.strip() for p in projects_str.split(',') if p.strip()]
+            
+            self.auto_select_updated = self.auto_select_checkbox.isChecked()
             
             try:
                 self.save_config(url, token, projects)
@@ -351,6 +384,16 @@ class MainWindow(QMainWindow):
         pipeline_data = []
         for pipeline in pipelines:
             jobs = self.gitlab_manager.get_pipeline_jobs(proj_id, pipeline.id)
+            # Déterminer l'ordre des stages basé sur l'ordre des jobs
+            stage_order = {}
+            for job in jobs:
+                if job.stage not in stage_order:
+                    stage_order[job.stage] = len(stage_order)
+            # Trier les jobs par ordre des stages inverse puis par ID
+            jobs.sort(key=lambda j: (-stage_order.get(j.stage, -1), j.id))
+            # Filtrer pour exclure les jobs en "created", mais garder les "manual" et "created" si ils sont dans un stage après le stage courant
+            # Pour l'instant, commenter le filtrage pour tester
+            # jobs = [j for j in jobs if j.status != 'created']
             pipeline_data.append({
                 'pipeline': pipeline,
                 'jobs': jobs
@@ -377,6 +420,12 @@ class MainWindow(QMainWindow):
         
         # Mettre à jour le texte du projet
         proj_item.setText(0, f"{proj_name} (ID: {proj_id})")
+        
+        # Police en gras et plus grosse pour les projets
+        font = proj_item.font(0)
+        font.setBold(True)
+        font.setPointSize(12)  # Un peu plus gros
+        proj_item.setFont(0, font)
         
         # Créer un ensemble des IDs de pipelines existants
         existing_pipeline_ids = set()
@@ -411,18 +460,53 @@ class MainWindow(QMainWindow):
                             child.setText(0, expected_text)
                             # Mettre à jour les jobs aussi
                             self._update_pipeline_jobs(child, jobs, proj_id)
+                            
+                            # Police en gras pour les pipelines
+                            font = child.font(0)
+                            font.setBold(True)
+                            font.setPointSize(11)
+                            child.setFont(0, font)
+                            
+                            # Si l'option est activée, sélectionner le premier job de la pipeline mise à jour
+                            if self.auto_select_updated and child.childCount() > 0:
+                                first_job_item = child.child(0)
+                                self.tree.setCurrentItem(first_job_item)
+                                self.on_item_clicked(first_job_item, 0)
                         break
             else:
                 # Ajouter le nouveau pipeline
                 pipeline_item = QTreeWidgetItem(proj_item, [f"Pipeline {pipeline.id} - {pipeline.status}"])
                 
+                # Police en gras pour les pipelines
+                font = pipeline_item.font(0)
+                font.setBold(True)
+                font.setPointSize(11)
+                pipeline_item.setFont(0, font)
+                
                 # Ajouter les jobs
                 for job in jobs:
                     job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
                     job_item.setData(0, Qt.ItemDataRole.UserRole, (proj_id, job.id))
+                    
+                    # Définir la couleur selon le statut
+                    self._set_job_color(job_item, job.status)
+                    
+                    # Démarrer un worker de statut pour ce job
+                    key = (proj_id, job.id)
+                    if key not in self.job_status_workers:
+                        worker = JobStatusWorker(self.gitlab_manager, proj_id, job.id, job_item)
+                        worker.status_updated.connect(self._on_job_status_updated)
+                        worker.start()
+                        self.job_status_workers[key] = worker
                 
                 # Développer le pipeline
                 pipeline_item.setExpanded(True)
+                
+                # Sélectionner automatiquement le premier job de la nouvelle pipeline pour afficher ses logs
+                if jobs:
+                    first_job_item = pipeline_item.child(0)
+                    self.tree.setCurrentItem(first_job_item)
+                    self.on_item_clicked(first_job_item, 0)
         
         # Développer le projet si nécessaire
         if not proj_item.isExpanded():
@@ -450,11 +534,28 @@ class MainWindow(QMainWindow):
                         expected_text = f"{job.name} - {job.status}"
                         if child.text(0) != expected_text:
                             child.setText(0, expected_text)
+                            # Mettre à jour la couleur
+                            self._set_job_color(child, job.status)
                         break
             else:
                 # Ajouter le nouveau job
                 job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
                 job_item.setData(0, Qt.ItemDataRole.UserRole, (proj_id, job.id))
+                
+                # Définir la couleur selon le statut
+                self._set_job_color(job_item, job.status)
+                
+                # Démarrer un worker de statut pour le nouveau job
+                key = (proj_id, job.id)
+                if key not in self.job_status_workers:
+                    worker = JobStatusWorker(self.gitlab_manager, proj_id, job.id, job_item)
+                    worker.status_updated.connect(self._on_job_status_updated)
+                    worker.start()
+                    self.job_status_workers[key] = worker
+                
+                # Sélectionner automatiquement le nouveau job pour afficher ses logs
+                self.tree.setCurrentItem(job_item)
+                self.on_item_clicked(job_item, 0)
     
     def _on_project_error(self, error, proj_id):
         """Appelé en cas d'erreur lors du chargement d'un projet"""
@@ -591,7 +692,18 @@ class MainWindow(QMainWindow):
                         cursor.insertText('\n\n' + '='*80 + '\n')
                         cursor.insertText(status_messages[job_status] + '\n')
             else:
-                self.show_error("Aucun log disponible pour ce job")
+                # Si pas de logs initiaux, afficher un message selon le statut
+                if job_status in ['success', 'failed', 'canceled', 'skipped']:
+                    self.show_error("Aucun log disponible pour ce job terminé")
+                else:
+                    self.log_view.setPlainText("Logs en cours de chargement...")
+                    # Démarrer le suivi en temps réel même sans logs initiaux
+                    print("Démarrage du suivi en temps réel...")
+                    self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
+                    self.log_worker.log_ready.connect(self.update_log_display)
+                    self.log_worker.error_occurred.connect(self.show_error)
+                    self.log_worker.job_finished.connect(self._on_job_finished)
+                    self.log_worker.start()
             
         except Exception as e:
             error_msg = f"Erreur lors du chargement des logs: {str(e)}"
@@ -622,6 +734,37 @@ class MainWindow(QMainWindow):
                 # Arrêter le worker car le job est terminé
                 self.log_worker.stop()
                 self.log_worker.wait()
+
+    def _set_job_color(self, job_item, status):
+        """Définit la couleur de l'item job selon son statut"""
+        if status == 'success':
+            color = QColor(100, 255, 100)  # Vert clair
+        elif status == 'running':
+            color = QColor(100, 150, 255)  # Bleu clair
+        elif status == 'failed':
+            color = QColor(255, 100, 100)  # Rouge clair
+        else:
+            color = QColor('white')  # Blanc pour les autres statuts
+        job_item.setForeground(0, color)
+
+    def _on_job_status_updated(self, status):
+        """Appelé quand le statut d'un job est mis à jour"""
+        worker = self.sender()
+        if worker and hasattr(worker, 'job_item'):
+            current_text = worker.job_item.text(0)
+            if ' - ' in current_text:
+                parts = current_text.split(' - ')
+                name = parts[0]
+                current_status = parts[1] if len(parts) > 1 else ''
+                new_text = f"{name} - {status}"
+                if current_text != new_text:
+                    worker.job_item.setText(0, new_text)
+                    # Mettre à jour la couleur selon le nouveau statut
+                    self._set_job_color(worker.job_item, status)
+                    # Si le statut passe à "running" ou "failed", sélectionner automatiquement
+                    if status in ['running', 'failed'] and current_status != status:
+                        self.tree.setCurrentItem(worker.job_item)
+                        self.on_item_clicked(worker.job_item, 0)
 
     def update_log_display(self, log_content):
         # Vider le contenu actuel
@@ -773,7 +916,7 @@ class MainWindow(QMainWindow):
     def setup_timers(self):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_projects)
-        self.timer.start(3000)  # Vérifier les mises à jour toutes les 10 secondes
+        self.timer.start(2000)  # Vérifier les mises à jour toutes les 1 seconde
         
         # Planifier une première mise à jour différée pour laisser le temps à l'interface de se charger
         QTimer.singleShot(500, self.update_projects)
@@ -793,5 +936,13 @@ class MainWindow(QMainWindow):
                     # worker.wait()  # Retiré pour éviter le blocage
                 except:
                     pass
+        
+        # Arrêter tous les workers de statut des jobs
+        for worker in self.job_status_workers.values():
+            if worker and worker.isRunning():
+                worker.stop()
+                # worker.wait() optionnel
+        
+        self.job_status_workers.clear()
                 
         event.accept()
