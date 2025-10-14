@@ -144,7 +144,7 @@ class LogWorker(QThread):
                 break
                 
             # Attendre avant la prochaine itération
-            self.msleep(500)  # Vérifier toutes les 0.5 secondes pour les logs
+            self.msleep(1000)  # Vérifier toutes les 1 seconde pour les logs
     
     def _on_log_received(self, log):
         if self._is_running:
@@ -249,7 +249,7 @@ class JobDataWorker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GitLab Pipelines Manager")
+        self.setWindowTitle("Mr. Pipe")
         self.gitlab_manager = None
         self.projects = []  # list of project ids
         self.current_job = None
@@ -574,6 +574,8 @@ class MainWindow(QMainWindow):
     def _on_sync_done(self, projects, saved_projects):
         print(f"Sync done, got {len(projects)} projects")
         # Cache the projects
+        if not self.config.has_section('GitLab'):
+            self.config.add_section('GitLab')
         self.config['GitLab']['available_projects'] = json.dumps([{'name': p.name, 'id': p.id} for p in projects])
         with open(self.config_file, 'w') as f:
             self.config.write(f)
@@ -1329,13 +1331,13 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_projects)
         # Commencer avec un intervalle plus long après le chargement initial
-        QTimer.singleShot(10000, lambda: self.timer.start(3000))  # Attendre 10s puis mettre à jour toutes les 3s
+        QTimer.singleShot(10000, lambda: self.timer.start(3000))  # Attendre 10s puis mettre à jour toutes les 2s
 
         self.loading_timer = QTimer(self)
         self.loading_timer.timeout.connect(self._animate_loading_dots)
 
         # Planifier une première mise à jour différée pour laisser le temps à l'interface de se charger
-        QTimer.singleShot(500, self.update_projects)
+        QTimer.singleShot(8000, self.update_projects)
 
     def closeEvent(self, event):
         # Arrêter tous les workers en cours d'exécution
