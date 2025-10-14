@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QDialog, QLabel,
-    QLineEdit, QDialogButtonBox, QCheckBox, QPushButton, QMessageBox, QListWidget, QListWidgetItem
+    QLineEdit, QDialogButtonBox, QCheckBox, QPushButton, QMessageBox, QListWidget, QListWidgetItem, QStackedWidget, QSizePolicy
 )
 from PyQt6.QtGui import QAction, QTextCharFormat, QColor, QTextCursor, QFont, QFontDatabase
 from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal, QStandardPaths, QEventLoop
@@ -65,6 +65,35 @@ class ProjectSyncWorker(QThread):
             if self._is_running:
                 self.sync_error.emit(str(e))
     
+    def stop(self):
+        self._is_running = False
+
+
+class LaunchWorker(QThread):
+    """Worker for launching manual jobs"""
+    launch_done = pyqtSignal()
+    launch_error = pyqtSignal(str)
+
+    def __init__(self, gitlab_manager, proj_id, job_id):
+        super().__init__()
+        self.gitlab_manager = gitlab_manager
+        self.proj_id = proj_id
+        self.job_id = job_id
+        self._is_running = True
+
+    def run(self):
+        if not self._is_running:
+            return
+        try:
+            project = self.gitlab_manager.get_project(self.proj_id)
+            job = project.jobs.get(self.job_id)
+            job.play()
+            if self._is_running:
+                self.launch_done.emit()
+        except Exception as e:
+            if self._is_running:
+                self.launch_error.emit(str(e))
+
     def stop(self):
         self._is_running = False
 
@@ -143,13 +172,15 @@ class LogWorker(QThread):
 class JobStatusWorker(QThread):
     """Worker pour surveiller le statut d'un job spécifique"""
     status_updated = pyqtSignal(str)
+    finished_signal = pyqtSignal(tuple)  # Emit the key when finished
     
-    def __init__(self, gitlab_manager, proj_id, job_id, job_item):
+    def __init__(self, gitlab_manager, proj_id, job_id, job_item, key):
         super().__init__()
         self.gitlab_manager = gitlab_manager
         self.proj_id = proj_id
         self.job_id = job_id
         self.job_item = job_item  # Référence à l'item QTreeWidgetItem pour mise à jour
+        self.key = key
         self._is_running = True
     
     def run(self):
@@ -163,13 +194,53 @@ class JobStatusWorker(QThread):
                 # Si le job est terminé, arrêter le worker
                 if status in ['success', 'failed', 'canceled', 'skipped']:
                     self._is_running = False
+                    self.finished_signal.emit(self.key)
                     break
             except Exception as e:
                 print(f"Erreur mise à jour statut job {self.job_id}: {e}")
                 self._is_running = False
+                self.finished_signal.emit(self.key)
                 break
             
             self.msleep(2000)  # Vérifier toutes les 2 secondes
+    
+    def stop(self):
+        self._is_running = False
+
+
+class JobDataWorker(QThread):
+    """Worker for fetching job data (status and logs)"""
+    data_ready = pyqtSignal(dict)
+    
+    def __init__(self, gitlab_manager, proj_id, job_id):
+        super().__init__()
+        self.gitlab_manager = gitlab_manager
+        self.proj_id = proj_id
+        self.job_id = job_id
+        self._is_running = True
+    
+    def run(self):
+        if not self._is_running:
+            return
+        try:
+            project = self.gitlab_manager.get_project(self.proj_id)
+            job = project.jobs.get(self.job_id)
+            status = job.status
+
+            # Try to get logs
+            try:
+                trace = job.trace().decode('utf-8')
+                data = {'status': status, 'trace': trace}
+            except Exception as e:
+                print(f"Erreur lors de la récupération des logs: {e}")
+                data = {'status': status, 'trace': None}
+
+            if self._is_running:
+                self.data_ready.emit(data)
+        except Exception as e:
+            print(f"Erreur lors de la récupération des données du job: {e}")
+            if self._is_running:
+                self.data_ready.emit(None)
     
     def stop(self):
         self._is_running = False
@@ -196,6 +267,12 @@ class MainWindow(QMainWindow):
         self.auto_select_updated = True  # Par défaut activé
         self.job_animations = {}  # Pour gérer les timers d'animation des jobs "running"
         self.sync_worker = None  # For project sync worker
+        self.launch_worker = None  # For launching manual jobs
+        self.job_data_worker = None  # For fetching job data
+        self.current_manual_job = None  # For launching manual jobs
+        self._loading_state = 0  # For loading animation
+        self._loading_text = "·"  # For loading animation
+        self._loading_active = False  # For loading animation
         self.setup_ui()
 
         # Configuration simple de la police
@@ -260,12 +337,27 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.tree)
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
-        self.loading_timer = QTimer(self)
-        self.loading_timer.timeout.connect(self._animate_loading_dots)
-        self._loading_state = 0
-        self._loading_active = False
-        self._loading_text = ""
-        layout.addWidget(self.log_view)
+
+        # Launch widget for manual jobs
+        launch_widget = QWidget()
+        launch_layout = QVBoxLayout(launch_widget)
+        launch_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        launch_label = QLabel("This job is manual and not started.")
+        launch_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        launch_button = QPushButton("Launch Job")
+        launch_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        launch_button.clicked.connect(self._launch_manual_job)
+        launch_layout.addWidget(launch_label)
+        launch_layout.addWidget(launch_button)
+
+        # Stacked widget for right side
+        self.right_stack = QStackedWidget()
+        self.right_stack.addWidget(self.log_view)  # index 0
+        self.right_stack.addWidget(launch_widget)  # index 1
+        self.right_stack.setCurrentIndex(0)  # default to log_view
+
+        layout.addWidget(self.tree)
+        layout.addWidget(self.right_stack)
         # Menu for settings
         menubar = self.menuBar()
         settings_menu = menubar.addMenu("Settings")
@@ -299,8 +391,21 @@ class MainWindow(QMainWindow):
                     cursor.deleteChar()
 
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        if self._loading_active:
+        if hasattr(self, '_loading_active') and self._loading_active and hasattr(self, '_loading_text'):
             cursor.insertText('\n' + self._loading_text)
+
+    def _launch_manual_job(self):
+        if not self.current_manual_job:
+            return
+        proj_id, job_id = self.current_manual_job
+        # Check if already launching
+        if self.launch_worker and self.launch_worker.isRunning():
+            return
+        # Use worker to launch
+        self.launch_worker = LaunchWorker(self.gitlab_manager, proj_id, job_id)
+        self.launch_worker.launch_done.connect(self._on_launch_done)
+        self.launch_worker.launch_error.connect(self._on_launch_error)
+        self.launch_worker.start()
 
     def load_config(self):
         if os.path.exists(self.config_file):
@@ -489,6 +594,29 @@ class MainWindow(QMainWindow):
         # Restore UI
         self.sync_button.setText("Sync Projects")
         self.sync_button.setEnabled(True)
+
+    def _on_launch_done(self):
+        """Called when a manual job launch succeeds"""
+        print("Job launched successfully")
+        self.launch_worker = None
+        # Refresh projects to update status
+        self.update_projects(force_update=True)
+        # Switch back to log view and show message
+        self.right_stack.setCurrentIndex(0)
+        self.log_view.setPlainText("Job launched successfully. Refreshing...")
+
+    def _on_launch_error(self, error):
+        """Called when a manual job launch fails"""
+        print(f"Launch error: {error}")
+        self.launch_worker = None
+        QMessageBox.warning(self, "Launch Error", f"Failed to launch job: {error}")
+        # Switch back to log view
+        self.right_stack.setCurrentIndex(0)
+
+    def _on_job_status_worker_finished(self, key):
+        """Called when a JobStatusWorker finishes"""
+        if key in self.job_status_workers:
+            del self.job_status_workers[key]
 
     def _filter_projects(self, text):
         text = text.lower()
@@ -693,8 +821,9 @@ class MainWindow(QMainWindow):
                     # Démarrer un worker de statut pour ce job
                     key = (proj_id, job.id)
                     if key not in self.job_status_workers:
-                        worker = JobStatusWorker(self.gitlab_manager, proj_id, job.id, job_item)
+                        worker = JobStatusWorker(self.gitlab_manager, proj_id, job.id, job_item, key)
                         worker.status_updated.connect(self._on_job_status_updated)
+                        worker.finished_signal.connect(self._on_job_status_worker_finished)
                         worker.start()
                         self.job_status_workers[key] = worker
 
@@ -747,8 +876,9 @@ class MainWindow(QMainWindow):
                 # Démarrer un worker de statut pour le nouveau job
                 key = (proj_id, job.id)
                 if key not in self.job_status_workers:
-                    worker = JobStatusWorker(self.gitlab_manager, proj_id, job.id, job_item)
+                    worker = JobStatusWorker(self.gitlab_manager, proj_id, job.id, job_item, key)
                     worker.status_updated.connect(self._on_job_status_updated)
+                    worker.finished_signal.connect(self._on_job_status_worker_finished)
                     worker.start()
                     self.job_status_workers[key] = worker
 
@@ -765,11 +895,20 @@ class MainWindow(QMainWindow):
         if not data:
             return
 
+        # Reset to log view
+        self.right_stack.setCurrentIndex(0)
+        self.current_manual_job = None
+
         # Arrêter le worker précédent s'il existe
         if self.log_worker:
             self.log_worker.stop()
             self.log_worker.wait()
             self.log_worker = None
+
+        if self.job_data_worker:
+            self.job_data_worker.stop()
+            self.job_data_worker.wait()
+            self.job_data_worker = None
 
         proj_id, job_id = data
         self.current_job = (proj_id, job_id)
@@ -778,141 +917,81 @@ class MainWindow(QMainWindow):
         self.log_view.setPlainText("Chargement des logs en cours...")
         self._update_loading_display()
 
-        # Récupérer les logs immédiatement
-        try:
-            # Récupérer d'abord le statut du job
-            def get_job_status(project_id, job_id):
-                try:
-                    print(f"Récupération du statut du job {job_id}...")
-                    project = self.gitlab_manager.get_project(project_id)
-                    job = project.jobs.get(job_id)
-                    status = job.status
-                    print(f"Statut du job {job_id}: {status}")
+        # Use worker to fetch job data
+        self.job_data_worker = JobDataWorker(self.gitlab_manager, proj_id, job_id)
+        self.job_data_worker.data_ready.connect(self._on_job_data_received)
+        self.job_data_worker.start()
 
-                    # Récupérer les logs directement ici
-                    print(f"Récupération des logs pour le job {job_id}...")
-                    try:
-                        trace = job.trace().decode('utf-8')
-                        print(f"Logs récupérés directement, longueur: {len(trace)}")
-                        return status, trace
-                    except Exception as e:
-                        print(f"Erreur lors de la récupération directe des logs: {e}")
-                        return status, None
+    def _on_job_data_received(self, job_data):
+        """Called when job data (status and logs) is received"""
+        # Clean up the worker
+        if self.job_data_worker:
+            self.job_data_worker.stop()
+            self.job_data_worker.wait()
+            self.job_data_worker = None
 
-                except Exception as e:
-                    error_msg = f"Erreur lors de la récupération du statut du job {job_id}: {e}"
-                    print(error_msg)
-                    self.show_error(error_msg)
-                    return None, None
+        if job_data is None:
+            self.show_error("Impossible de récupérer les données du job")
+            return
 
-            print("Création du worker de statut et de logs...")
+        proj_id, job_id = self.current_job
+        job_status = job_data.get('status')
+        log_content = job_data.get('trace')
 
-            # Utiliser un QEventLoop pour attendre la fin de l'opération
-            loop = QEventLoop()
+        if job_status == 'manual':
+            self.current_manual_job = (proj_id, job_id)
+            self.right_stack.setCurrentIndex(1)  # show launch widget
+            return
 
-            # Fonction pour gérer la fin de la récupération
-            def on_job_data_received():
-                loop.quit()
+        self._loading_active = job_status not in ['success', 'failed', 'canceled', 'skipped']
 
-            # Créer un worker pour récupérer les données du job
-            def fetch_job_data():
-                try:
-                    project = self.gitlab_manager.get_project(proj_id)
-                    job = project.jobs.get(job_id)
-                    status = job.status
+        print(f"Statut du job: {job_status}")
+        print(f"Taille des logs: {len(log_content) if log_content else 0} caractères")
 
-                    # Essayer de récupérer les logs
-                    try:
-                        trace = job.trace().decode('utf-8')
-                        return {'status': status, 'trace': trace}
-                    except Exception as e:
-                        print(f"Erreur lors de la récupération des logs: {e}")
-                        return {'status': status, 'trace': None}
+        if log_content:
+            self.update_log_display(log_content)
+            if self._loading_active:
+                self.loading_timer.start(500)
+            # Si le job est en cours, démarrer le suivi en temps réel
+            if self._loading_active:
+                print("Démarrage du suivi en temps réel...")
+                self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
+                self.log_worker.log_ready.connect(self.update_log_display)
+                self.log_worker.error_occurred.connect(self.show_error)
+                self.log_worker.job_finished.connect(self._on_job_finished)
+                self.log_worker.start()
+            else:
+                print("Le job est terminé, pas de suivi en temps réel nécessaire")
 
-                except Exception as e:
-                    print(f"Erreur lors de la récupération des données du job: {e}")
-                    return None
+                # Afficher un message de statut si le job est terminé
+                status_messages = {
+                    'success': '✅ Le job s\'est terminé avec succès',
+                    'failed': '❌ Le job a échoué',
+                    'canceled': '⏹️ Le job a été annulé',
+                    'skipped': '⏭️ Le job a été ignoré'
+                }
 
-            job_data = None
-
-            # Exécuter dans un thread pour ne pas bloquer l'interface
-            def run_in_thread():
-                nonlocal job_data
-                job_data = fetch_job_data()
-                loop.quit()
-
-            import threading
-            thread = threading.Thread(target=run_in_thread)
-            thread.daemon = True
-            thread.start()
-
-            # Attendre la fin du thread avec un timeout
-            QTimer.singleShot(10000, loop.quit)  # Timeout de 10 secondes
-            loop.exec()
-
-            if job_data is None:
-                self.show_error("Impossible de récupérer les données du job")
-                return
-
-            job_status = job_data.get('status')
-            log_content = job_data.get('trace')
-
-            self._loading_active = job_status not in ['success', 'failed', 'canceled', 'skipped']
-
-            print(f"Statut du job: {job_status}")
-            print(f"Taille des logs: {len(log_content) if log_content else 0} caractères")
-
-            if log_content:
-                self.update_log_display(log_content)
+                if job_status in status_messages:
+                    cursor = self.log_view.textCursor()
+                    cursor.movePosition(QTextCursor.MoveOperation.End)
+                    cursor.insertText('\n\n' + '='*80 + '\n')
+                    cursor.insertText(status_messages[job_status] + '\n')
+        else:
+            # Si pas de logs initiaux, afficher un message selon le statut
+            if job_status in ['success', 'failed', 'canceled', 'skipped']:
+                self.show_error("Aucun log disponible pour ce job terminé")
+            else:
+                self.log_view.setPlainText("Logs en cours de chargement...")
+                self._update_loading_display()
                 if self._loading_active:
                     self.loading_timer.start(500)
-                # Si le job est en cours, démarrer le suivi en temps réel
-                if self._loading_active:
-                    print("Démarrage du suivi en temps réel...")
-                    self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
-                    self.log_worker.log_ready.connect(self.update_log_display)
-                    self.log_worker.error_occurred.connect(self.show_error)
-                    self.log_worker.job_finished.connect(self._on_job_finished)
-                    self.log_worker.start()
-                else:
-                    print("Le job est terminé, pas de suivi en temps réel nécessaire")
-
-                    # Afficher un message de statut si le job est terminé
-                    status_messages = {
-                        'success': '✅ Le job s\'est terminé avec succès',
-                        'failed': '❌ Le job a échoué',
-                        'canceled': '⏹️ Le job a été annulé',
-                        'skipped': '⏭️ Le job a été ignoré'
-                    }
-
-                    if job_status in status_messages:
-                        cursor = self.log_view.textCursor()
-                        cursor.movePosition(QTextCursor.MoveOperation.End)
-                        cursor.insertText('\n\n' + '='*80 + '\n')
-                        cursor.insertText(status_messages[job_status] + '\n')
-            else:
-                # Si pas de logs initiaux, afficher un message selon le statut
-                if job_status in ['success', 'failed', 'canceled', 'skipped']:
-                    self.show_error("Aucun log disponible pour ce job terminé")
-                else:
-                    self.log_view.setPlainText("Logs en cours de chargement...")
-                    self._update_loading_display()
-                    if self._loading_active:
-                        self.loading_timer.start(500)
-                    # Démarrer le suivi en temps réel même sans logs initiaux
-                    print("Démarrage du suivi en temps réel...")
-                    self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
-                    self.log_worker.log_ready.connect(self.update_log_display)
-                    self.log_worker.error_occurred.connect(self.show_error)
-                    self.log_worker.job_finished.connect(self._on_job_finished)
-                    self.log_worker.start()
-
-        except Exception as e:
-            error_msg = f"Erreur lors du chargement des logs: {str(e)}"
-            print(error_msg)
-            self.show_error(error_msg)
-            import traceback
-            traceback.print_exc()
+                # Démarrer le suivi en temps réel même sans logs initiaux
+                print("Démarrage du suivi en temps réel...")
+                self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
+                self.log_worker.log_ready.connect(self.update_log_display)
+                self.log_worker.error_occurred.connect(self.show_error)
+                self.log_worker.job_finished.connect(self._on_job_finished)
+                self.log_worker.start()
 
     def _on_job_finished(self):
         """Appelé quand un job est terminé (succès, échec, etc.)"""
@@ -1236,7 +1315,11 @@ class MainWindow(QMainWindow):
     def setup_timers(self):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_projects)
-        self.timer.start(2000)  # Vérifier les mises à jour toutes les 1 seconde
+        # Commencer avec un intervalle plus long après le chargement initial
+        QTimer.singleShot(10000, lambda: self.timer.start(3000))  # Attendre 10s puis mettre à jour toutes les 15s
+
+        self.loading_timer = QTimer(self)
+        self.loading_timer.timeout.connect(self._animate_loading_dots)
 
         # Planifier une première mise à jour différée pour laisser le temps à l'interface de se charger
         QTimer.singleShot(500, self.update_projects)
@@ -1249,6 +1332,18 @@ class MainWindow(QMainWindow):
 
         if self.sync_worker:
             self.sync_worker.stop()
+
+        if self.launch_worker:
+            self.launch_worker.stop()
+
+        if self.job_data_worker:
+            self.job_data_worker.stop()
+
+        # Arrêter les timers
+        if hasattr(self, 'timer') and self.timer:
+            self.timer.stop()
+        if hasattr(self, 'loading_timer') and self.loading_timer:
+            self.loading_timer.stop()
 
         for worker in self.project_workers.values():
             if worker and worker.isRunning():
