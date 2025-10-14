@@ -7,6 +7,7 @@ from PyQt6.QtGui import QAction, QTextCharFormat, QColor, QTextCursor, QFont, QF
 from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal, QStandardPaths, QEventLoop
 import os, time
 import configparser
+import json
 from gitlab_manager import GitLabManager
 from PyQt6 import sip
 
@@ -53,11 +54,14 @@ class ProjectSyncWorker(QThread):
         if not self._is_running:
             return
         try:
+            print(f"Syncing projects for {self.url}")
             manager = GitLabManager(self.url, self.token)
             projects = manager.get_all_projects()
+            print(f"Synced {len(projects)} projects")
             if self._is_running:
                 self.sync_done.emit(projects)
         except Exception as e:
+            print(f"Sync error: {e}")
             if self._is_running:
                 self.sync_error.emit(str(e))
     
@@ -363,6 +367,7 @@ class MainWindow(QMainWindow):
 
         # Sync button
         sync_button = QPushButton("Sync Projects")
+        self.sync_button = sync_button
         sync_button.clicked.connect(lambda: self._sync_projects(dialog))
         layout.addWidget(sync_button)
 
@@ -376,6 +381,24 @@ class MainWindow(QMainWindow):
 
         # Load saved projects
         saved_projects = set(int(p.strip()) for p in current_projects.split(',') if p.strip())
+
+        # Load cached available projects
+        cached_projects = self.config.get('GitLab', 'available_projects', fallback=None)
+        if cached_projects:
+            try:
+                available = json.loads(cached_projects)
+                self.projects_list.clear()
+                for p in available:
+                    item = QListWidgetItem(f"{p['name']} (ID: {p['id']})")
+                    item.setData(Qt.ItemDataRole.UserRole, p['id'])
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    if p['id'] in saved_projects:
+                        item.setCheckState(Qt.CheckState.Checked)
+                    else:
+                        item.setCheckState(Qt.CheckState.Unchecked)
+                    self.projects_list.addItem(item)
+            except Exception as e:
+                print(f"Error loading cached projects: {e}")
 
         # Auto-sync removed to prevent freezing
 
@@ -417,16 +440,25 @@ class MainWindow(QMainWindow):
         token = self.token_edit.text().strip()
         url = self.url_edit.text().strip()
         if not token:
-            QMessageBox.warning(dialog, "Warning", "Enter token first")
+            QMessageBox.warning(self, "Warning", "Enter token first")
             return
+        # Update UI
+        self.sync_button.setText("Syncing...")
+        self.sync_button.setEnabled(False)
         # Use worker for sync
         saved_projects = set(int(p.strip()) for p in self.config.get('GitLab', 'projects', fallback='').split(',') if p.strip())
         self.sync_worker = ProjectSyncWorker(url, token)
+        print("Starting sync worker")
         self.sync_worker.sync_done.connect(lambda projects: self._on_sync_done(projects, saved_projects))
-        self.sync_worker.sync_error.connect(lambda error: QMessageBox.warning(dialog, "Sync Error", f"Failed to sync projects: {error}"))
+        self.sync_worker.sync_error.connect(lambda error: self._on_sync_error(error))
         self.sync_worker.start()
 
     def _on_sync_done(self, projects, saved_projects):
+        print(f"Sync done, got {len(projects)} projects")
+        # Cache the projects
+        self.config['GitLab']['available_projects'] = json.dumps([{'name': p.name, 'id': p.id} for p in projects])
+        with open(self.config_file, 'w') as f:
+            self.config.write(f)
         self.projects_list.clear()
         for proj in projects:
             item = QListWidgetItem(f"{proj.name} (ID: {proj.id})")
@@ -438,6 +470,17 @@ class MainWindow(QMainWindow):
                 item.setCheckState(Qt.CheckState.Unchecked)
             self.projects_list.addItem(item)
         self.sync_worker = None
+        # Restore UI
+        self.sync_button.setText("Sync Projects")
+        self.sync_button.setEnabled(True)
+
+    def _on_sync_error(self, error):
+        print(f"Sync error: {error}")
+        QMessageBox.warning(self, "Sync Error", f"Failed to sync projects: {error}")
+        self.sync_worker = None
+        # Restore UI
+        self.sync_button.setText("Sync Projects")
+        self.sync_button.setEnabled(True)
 
     def _limit_selection(self, item):
         checked_count = 0

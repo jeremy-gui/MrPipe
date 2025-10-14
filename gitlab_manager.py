@@ -19,7 +19,7 @@ class GitLabManager:
         return pipeline.jobs.list(all=True)
 
     def get_all_projects(self):
-        return self.gl.projects.list(all=True)
+        return self.gl.projects.list(membership=True, get_all=True)
 
     def get_job_trace(self, project_id, job_id):
         project = self.get_project(project_id)
