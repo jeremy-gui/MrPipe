@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QDialog, QLabel,
-    QLineEdit, QDialogButtonBox, QCheckBox
+    QLineEdit, QDialogButtonBox, QCheckBox, QPushButton, QMessageBox, QListWidget, QListWidgetItem
 )
 from PyQt6.QtGui import QAction, QTextCharFormat, QColor, QTextCursor, QFont, QFontDatabase
 from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal, QStandardPaths, QEventLoop
@@ -33,6 +33,33 @@ class HttpWorker(QThread):
         except Exception as e:
             if self._is_running:
                 self.error.emit(f"Erreur: {str(e)}")
+    
+    def stop(self):
+        self._is_running = False
+
+
+class ProjectSyncWorker(QThread):
+    """Worker for synchronizing project list"""
+    sync_done = pyqtSignal(list)
+    sync_error = pyqtSignal(str)
+    
+    def __init__(self, url, token):
+        super().__init__()
+        self.url = url
+        self.token = token
+        self._is_running = True
+    
+    def run(self):
+        if not self._is_running:
+            return
+        try:
+            manager = GitLabManager(self.url, self.token)
+            projects = manager.get_all_projects()
+            if self._is_running:
+                self.sync_done.emit(projects)
+        except Exception as e:
+            if self._is_running:
+                self.sync_error.emit(str(e))
     
     def stop(self):
         self._is_running = False
@@ -164,6 +191,7 @@ class MainWindow(QMainWindow):
         os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
         self.auto_select_updated = True  # Par défaut activé
         self.job_animations = {}  # Pour gérer les timers d'animation des jobs "running"
+        self.sync_worker = None  # For project sync worker
         self.setup_ui()
 
         # Configuration simple de la police
@@ -333,10 +361,23 @@ class MainWindow(QMainWindow):
         layout.addWidget(token_label)
         layout.addWidget(self.token_edit)
 
-        projects_label = QLabel("Project IDs (comma separated):")
-        self.projects_edit = QLineEdit(current_projects)
+        # Sync button
+        sync_button = QPushButton("Sync Projects")
+        sync_button.clicked.connect(lambda: self._sync_projects(dialog))
+        layout.addWidget(sync_button)
+
+        # Projects list
+        projects_label = QLabel("Select projects to monitor (max 10):")
         layout.addWidget(projects_label)
-        layout.addWidget(self.projects_edit)
+
+        self.projects_list = QListWidget()
+        self.projects_list.itemChanged.connect(self._limit_selection)
+        layout.addWidget(self.projects_list)
+
+        # Load saved projects
+        saved_projects = set(int(p.strip()) for p in current_projects.split(',') if p.strip())
+
+        # Auto-sync removed to prevent freezing
 
         # Option UI
         auto_select_label = QLabel("Sélectionner automatiquement les pipelines mises à jour:")
@@ -353,18 +394,59 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             url = self.url_edit.text().strip()
             token = self.token_edit.text().strip()
-            projects_str = self.projects_edit.text()
-            projects = [p.strip() for p in projects_str.split(',') if p.strip()]
+            # Get selected projects
+            selected_projects = []
+            for i in range(self.projects_list.count()):
+                item = self.projects_list.item(i)
+                if item.checkState() == Qt.CheckState.Checked:
+                    selected_projects.append(item.data(Qt.ItemDataRole.UserRole))
 
             self.auto_select_updated = self.auto_select_checkbox.isChecked()
 
             try:
-                self.save_config(url, token, projects)
-                self.projects = [int(p) for p in projects]
+                self.save_config(url, token, selected_projects)
+                self.projects = selected_projects
                 self.gitlab_manager = GitLabManager(url, token)
                 self.update_projects()
             except Exception as e:
                 self.log_view.setPlainText(f"Erreur de configuration : {str(e)}")
+
+    def _sync_projects(self, dialog):
+        if self.sync_worker and self.sync_worker.isRunning():
+            return  # Already syncing
+        token = self.token_edit.text().strip()
+        url = self.url_edit.text().strip()
+        if not token:
+            QMessageBox.warning(dialog, "Warning", "Enter token first")
+            return
+        # Use worker for sync
+        saved_projects = set(int(p.strip()) for p in self.config.get('GitLab', 'projects', fallback='').split(',') if p.strip())
+        self.sync_worker = ProjectSyncWorker(url, token)
+        self.sync_worker.sync_done.connect(lambda projects: self._on_sync_done(projects, saved_projects))
+        self.sync_worker.sync_error.connect(lambda error: QMessageBox.warning(dialog, "Sync Error", f"Failed to sync projects: {error}"))
+        self.sync_worker.start()
+
+    def _on_sync_done(self, projects, saved_projects):
+        self.projects_list.clear()
+        for proj in projects:
+            item = QListWidgetItem(f"{proj.name} (ID: {proj.id})")
+            item.setData(Qt.ItemDataRole.UserRole, proj.id)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            if proj.id in saved_projects:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+            self.projects_list.addItem(item)
+        self.sync_worker = None
+
+    def _limit_selection(self, item):
+        checked_count = 0
+        for i in range(self.projects_list.count()):
+            if self.projects_list.item(i).checkState() == Qt.CheckState.Checked:
+                checked_count += 1
+        if checked_count > 10:
+            item.setCheckState(Qt.CheckState.Unchecked)
+            QMessageBox.information(self, "Limit", "Maximum 10 projects can be selected")
 
     def update_projects(self, force_update=False):
         if not self.gitlab_manager:
@@ -1083,6 +1165,9 @@ class MainWindow(QMainWindow):
         if self.log_worker:
             self.log_worker.stop()
             # self.log_worker.wait()  # Retiré pour éviter le blocage
+
+        if self.sync_worker:
+            self.sync_worker.stop()
 
         for worker in self.project_workers.values():
             if worker and worker.isRunning():

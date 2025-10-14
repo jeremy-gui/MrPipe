@@ -18,6 +18,9 @@ class GitLabManager:
         pipeline = project.pipelines.get(pipeline_id)
         return pipeline.jobs.list(all=True)
 
+    def get_all_projects(self):
+        return self.gl.projects.list(all=True)
+
     def get_job_trace(self, project_id, job_id):
         project = self.get_project(project_id)
         job = project.jobs.get(job_id)
@@ -26,3 +29,4 @@ class GitLabManager:
         if isinstance(trace, bytes):
             return trace.decode('utf-8', errors='replace')
         return trace
+
