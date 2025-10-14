@@ -54,9 +54,11 @@ To create a native macOS application (.app) that shows "Mr. Pipe" in the menu ba
    ./build_app.sh
    ```
 
-3. The `Mr. Pipe.app` will be created in the `dist` folder.
+3. The `Mr. Pipe.app` will be created in the `dist` folder with your custom logo.
 
 4. Copy `Mr. Pipe.app` to your Applications folder.
+
+**Note**: The app will use the `logo.png` file in the project root as its icon.
 
 **Note**: If the build fails, you can try running PyInstaller directly:
 ```bash
