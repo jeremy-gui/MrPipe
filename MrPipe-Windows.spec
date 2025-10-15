@@ -78,7 +78,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='logo.ico',  # Use logo.ico as icon for Windows
+    icon='ico.ico',  # Use ico.ico as icon for Windows
     version_file='version_info.txt',  # Add version info for Windows
 )
 

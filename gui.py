@@ -254,7 +254,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Mr. Pipe")
         # Définir l'icône de l'application
-        self.setWindowIcon(QIcon("logo.ico"))
+        self.setWindowIcon(QIcon(self.get_resource_path("ico.ico")))
         self.gitlab_manager = None
         self.projects = []  # list of project ids
         self.current_job = None
@@ -389,6 +389,11 @@ class MainWindow(QMainWindow):
         config_action = QAction("Configure", self)
         config_action.triggered.connect(self.show_config)
         settings_menu.addAction(config_action)
+
+        # Quit action
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(self.close)
+        settings_menu.addAction(quit_action)
 
         # Apply dark mode stylesheet
         self._apply_dark_mode_stylesheet()
