@@ -40,7 +40,9 @@ A desktop application to manage GitLab pipelines for multiple projects.
 4. Click on a job to view its log on the right panel.
 5. For manual jobs, use the "Launch Job" button that appears.
 
-## Building macOS App
+## Building Applications
+
+### macOS App
 
 To create a native macOS application (.app) that shows "Mr. Pipe" in the menu bar:
 
@@ -60,10 +62,32 @@ To create a native macOS application (.app) that shows "Mr. Pipe" in the menu ba
 
 **Note**: The app will use the `logo.png` file in the project root as its icon.
 
-**Note**: If the build fails, you can try running PyInstaller directly:
-```bash
-pyinstaller --clean --noconfirm MrPipe.spec
-```
+### Windows Executable
+
+To create a Windows executable (.exe) that runs on any Windows system:
+
+1. **Prepare the icon** (if not already done):
+   ```bash
+   # Convert PNG to ICO (requires Pillow)
+   pip install Pillow
+   python3 -c "from PIL import Image; Image.open('logo.png').save('logo.ico', format='ICO', sizes=[(16,16), (32,32), (48,48), (64,64), (128,128), (256,256)])"
+   ```
+
+2. Install PyInstaller:
+   ```bash
+   pip install pyinstaller
+   ```
+
+3. Run the Windows build script:
+   ```bash
+   ./build_windows.sh
+   ```
+
+4. The `Mr. Pipe.exe` will be created in the `dist` folder.
+
+5. Copy `Mr. Pipe.exe` to any Windows system - it runs without installation!
+
+**Note**: The executable includes all dependencies and will work on Windows 7+. It will show proper version information and use your logo as the application icon.
 
 ## Notes
 
