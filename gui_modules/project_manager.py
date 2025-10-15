@@ -172,7 +172,7 @@ class ProjectManager:
                     key = (proj_id, job.id)
                     if key not in self.window.job_status_workers:
                         worker = JobStatusWorker(self.window.gitlab_manager, proj_id, job.id, job_item, key)
-                        worker.status_updated.connect(self.window._on_job_status_updated)
+                        worker.status_updated.connect(lambda status: JobColorManager.on_job_status_updated(self.window, status))
                         worker.finished_signal.connect(self.window._on_job_status_worker_finished)
                         worker.start()
                         self.window.job_status_workers[key] = worker
@@ -182,7 +182,7 @@ class ProjectManager:
                 if jobs:
                     first_job_item = pipeline_item.child(0)
                     self.window.tree.setCurrentItem(first_job_item)
-                    self.window.on_item_clicked(first_job_item, 0)
+                    self.window.job_manager.on_item_clicked(first_job_item, 0)
 
         if not proj_item.isExpanded():
             proj_item.setExpanded(True)
@@ -219,7 +219,7 @@ class ProjectManager:
                 key = (proj_id, job.id)
                 if key not in self.window.job_status_workers:
                     worker = JobStatusWorker(self.window.gitlab_manager, proj_id, job.id, job_item, key)
-                    worker.status_updated.connect(self.window._on_job_status_updated)
+                    worker.status_updated.connect(lambda status: JobColorManager.on_job_status_updated(self.window, status))
                     worker.finished_signal.connect(self.window._on_job_status_worker_finished)
                     worker.start()
                     self.window.job_status_workers[key] = worker
@@ -228,4 +228,4 @@ class ProjectManager:
         """Called on project loading error"""
         if proj_id in self.window.project_items:
             self.window.project_items[proj_id].setText(0, f"Erreur: {error}")
-        QTimer.singleShot(60000, lambda: self.update_projects(force_update=True))
+        QTimer.singleShot(60000, lambda: self.window.project_manager.update_projects(force_update=True))

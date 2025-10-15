@@ -35,7 +35,7 @@ class HipsterPipeAnimation:
             print("Animation already in progress, skipping")
             return
 
-        video_path = UIHelpers.get_resource_path("animation.mp4")
+        video_path = UIHelpers.get_resource_path("assets/animation.mp4")
         if not os.path.exists(video_path):
             print(f"Vidéo {video_path} non trouvée, pas d'animation Hipster Pipe")
             return

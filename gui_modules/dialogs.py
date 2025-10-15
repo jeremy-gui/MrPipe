@@ -106,7 +106,7 @@ class ConfigDialog(QDialog):
 
         # Hipster Pipe option
         hipster_layout = QHBoxLayout()
-        hipster_label = QLabel("Hipster Pipe (celebration animation on success):")
+        hipster_label = QLabel("Hipster Pipe:")
         self.hipster_checkbox = QCheckBox()
         self.hipster_checkbox.setChecked(
             self.parent_window.hipster_pipe_enabled if hasattr(self.parent_window, 'hipster_pipe_enabled') else False
@@ -265,7 +265,7 @@ class AboutDialog(QDialog):
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
 
-        splash_pixmap = QPixmap(self.get_resource_path("image.png"))
+        splash_pixmap = QPixmap(self.get_resource_path("assets/image.png"))
         splash_label = QLabel()
         splash_label.setPixmap(splash_pixmap.scaled(252, 252, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         splash_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

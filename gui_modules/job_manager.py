@@ -37,7 +37,7 @@ class JobManager:
         self.window.current_job = (proj_id, job_id)
 
         self.window.log_view.setPlainText("Chargement des logs en cours...")
-        self.window._update_loading_display()
+        self.window.loading_animation.update_display()
 
         self.window.job_data_worker = JobDataWorker(self.window.gitlab_manager, proj_id, job_id)
         self.window.job_data_worker.data_ready.connect(self.on_job_data_received)
@@ -51,7 +51,7 @@ class JobManager:
             self.window.job_data_worker = None
 
         if job_data is None:
-            self.window.show_error("Impossible de récupérer les données du job")
+            self.window.log_view.setPlainText("Impossible de récupérer les données du job")
             return
 
         proj_id, job_id = self.window.current_job
@@ -69,14 +69,14 @@ class JobManager:
         print(f"Taille des logs: {len(log_content) if log_content else 0} caractères")
 
         if log_content:
-            self.window.update_log_display(log_content)
+            self.window.log_display.update_log_display(log_content)
             if self.window._loading_active:
                 self.window.loading_timer.start(500)
             if self.window._loading_active:
                 print("Démarrage du suivi en temps réel...")
                 self.window.log_worker = LogWorker(self.window.gitlab_manager, proj_id, job_id)
-                self.window.log_worker.log_ready.connect(self.window.update_log_display)
-                self.window.log_worker.error_occurred.connect(self.window.show_error)
+                self.window.log_worker.log_ready.connect(self.window.log_display.update_log_display)
+                self.window.log_worker.error_occurred.connect(lambda msg: self.window.log_view.setPlainText(msg))
                 self.window.log_worker.job_finished.connect(self.on_job_finished)
                 self.window.log_worker.start()
             else:
@@ -96,16 +96,16 @@ class JobManager:
                     cursor.insertText(status_messages[job_status] + '\n')
         else:
             if job_status in ['success', 'failed', 'canceled', 'skipped']:
-                self.window.show_error("Aucun log disponible pour ce job terminé")
+                self.window.log_view.setPlainText("Aucun log disponible pour ce job terminé")
             else:
                 self.window.log_view.setPlainText("Logs en cours de chargement...")
-                self.window._update_loading_display()
+                self.window.loading_animation.update_display()
                 if self.window._loading_active:
                     self.window.loading_timer.start(500)
                 print("Démarrage du suivi en temps réel...")
                 self.window.log_worker = LogWorker(self.window.gitlab_manager, proj_id, job_id)
-                self.window.log_worker.log_ready.connect(self.window.update_log_display)
-                self.window.log_worker.error_occurred.connect(self.window.show_error)
+                self.window.log_worker.log_ready.connect(self.window.log_display.update_log_display)
+                self.window.log_worker.error_occurred.connect(lambda msg: self.window.log_view.setPlainText(msg))
                 self.window.log_worker.job_finished.connect(self.on_job_finished)
                 self.window.log_worker.start()
 
@@ -128,7 +128,7 @@ class JobManager:
                 cursor.insertText(message + '\n')
                 self.window._loading_active = False
                 self.window.loading_timer.stop()
-                self.window._update_loading_display()
+                self.window.loading_animation.update_display()
                 self.window.log_worker.stop()
                 self.window.log_worker.wait()
 
@@ -232,9 +232,9 @@ class JobColorManager:
                     JobColorManager.set_job_color(window, worker.job_item, status)
                     if status in ['running', 'failed'] and current_status != status:
                         window.tree.setCurrentItem(worker.job_item)
-                        window.on_item_clicked(worker.job_item, 0)
+                        window.job_manager.on_item_clicked(worker.job_item, 0)
 
                     # Hipster Pipe: celebration when job goes from running to success
                     if status == 'success' and current_status == 'running' and window.hipster_pipe_enabled:
                         print(f"Hipster Pipe triggered! Job {worker.job_id} went from {current_status} to {status}")
-                        window._show_hipster_pipe_animation()
+                        window.hipster_animation.show_animation()

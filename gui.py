@@ -33,7 +33,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Mr. Pipe")
         # Définir l'icône de l'application
-        self.setWindowIcon(QIcon(self.get_resource_path("ico.ico")))
+        self.setWindowIcon(QIcon(UIHelpers.get_resource_path("assets/ico.ico")))
         self.gitlab_manager = None
         self.projects = []  # list of project ids
         self.current_job = None
@@ -119,7 +119,7 @@ class MainWindow(QMainWindow):
         self.resize(2000, 1200)  # Taille augmentée pour une meilleure visibilité
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("Projects and Jobs")
-        self.tree.itemClicked.connect(self.on_item_clicked)
+        self.tree.itemClicked.connect(lambda item, col: self.job_manager.on_item_clicked(item, col))
         self.tree.setMinimumWidth(200)  # Largeur minimale pour éviter que ce soit trop petit
         self.splitter.addWidget(self.tree)
         self.log_view = QTextEdit()
@@ -150,7 +150,7 @@ class MainWindow(QMainWindow):
         self.splitter.setSizes([666, 1334])  # 2000 / 3 = 666.67, arrondi à 666 et 1334
 
         # Connecter le signal pour sauvegarder automatiquement quand on redimensionne
-        self.splitter.splitterMoved.connect(self._auto_save_geometry)
+        self.splitter.splitterMoved.connect(self.config_manager.auto_save_geometry)
 
         # Connecter les signaux de redimensionnement de la fenêtre
         self.resizeEvent = self._on_resize_event
@@ -178,12 +178,6 @@ class MainWindow(QMainWindow):
 
     # Stylesheet now imported from gui.styles module
 
-    def _animate_loading_dots(self):
-        self.loading_animation.animate_dots()
-
-    def _update_loading_display(self):
-        self.loading_animation.update_display()
-
     def _launch_manual_job(self):
         if not self.current_manual_job:
             return
@@ -203,15 +197,6 @@ class MainWindow(QMainWindow):
 
     # Moved to ConfigManager
 
-    def save_config(self, url, token, projects):
-        self.config_manager.save_config(url, token, projects)
-
-    def _restore_splitter_sizes(self, splitter_sizes_str):
-        self.config_manager.restore_splitter_sizes(splitter_sizes_str)
-
-    def _auto_save_geometry(self):
-        self.config_manager.auto_save_geometry()
-
     def _on_resize_event(self, event):
         """Appelé quand la fenêtre est redimensionnée"""
         # Délai pour éviter trop de sauvegardes pendant le redimensionnement
@@ -221,7 +206,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self, '_resize_timer'):
             self._resize_timer = QTimer(self)
             self._resize_timer.setSingleShot(True)
-            self._resize_timer.timeout.connect(self._auto_save_geometry)
+            self._resize_timer.timeout.connect(self.config_manager.auto_save_geometry)
 
         self._resize_timer.start(500)  # Sauvegarder 500ms après le dernier redimensionnement
 
@@ -237,21 +222,12 @@ class MainWindow(QMainWindow):
         if not hasattr(self, '_move_timer'):
             self._move_timer = QTimer(self)
             self._move_timer.setSingleShot(True)
-            self._move_timer.timeout.connect(self._auto_save_geometry)
+            self._move_timer.timeout.connect(self.config_manager.auto_save_geometry)
 
         self._move_timer.start(500)  # Sauvegarder 500ms après le dernier déplacement
 
         # Appeler la méthode parente
         super().moveEvent(event)
-
-    def get_resource_path(self, relative_path):
-        return UIHelpers.get_resource_path(relative_path)
-
-    def _show_hipster_pipe_animation(self):
-        self.hipster_animation.show_animation()
-
-    def _on_video_finished(self, status):
-        self.hipster_animation.on_video_finished(status)
 
     def show_config(self):
         dialog = ConfigDialog(self, self.config, self.config_file)
@@ -263,10 +239,10 @@ class MainWindow(QMainWindow):
             self.hipster_pipe_enabled = dialog.get_hipster_pipe_enabled()
 
             try:
-                self.save_config(url, token, selected_projects)
+                self.config_manager.save_config(url, token, selected_projects)
                 self.projects = selected_projects
                 self.gitlab_manager = GitLabManager(url, token)
-                self.update_projects()
+                self.project_manager.update_projects()
             except Exception as e:
                 self.log_view.setPlainText(f"Erreur de configuration : {str(e)}")
 
@@ -274,7 +250,7 @@ class MainWindow(QMainWindow):
 
     def show_about(self):
         """Affiche la fenêtre À propos"""
-        dialog = AboutDialog(self, self.get_resource_path)
+        dialog = AboutDialog(self, UIHelpers.get_resource_path)
         dialog.exec()
 
     # Sync methods removed - now handled in ConfigDialog
@@ -288,7 +264,7 @@ class MainWindow(QMainWindow):
             self.launch_button.setText("Launch Job")
             self.launch_button.setEnabled(True)
         # Refresh projects to update status
-        self.update_projects(force_update=True)
+        self.project_manager.update_projects(force_update=True)
         # Switch back to log view and show message
         self.right_stack.setCurrentIndex(0)
         self.log_view.setPlainText("Job launched successfully. Refreshing...")
@@ -312,620 +288,21 @@ class MainWindow(QMainWindow):
 
     # Filter and limit methods removed - now handled in ConfigDialog
 
-    def update_projects(self, force_update=False):
-        self.project_manager.update_projects(force_update)
-
-    def _fetch_project_data_old(self, proj_id):
-        if not self.gitlab_manager:
-            return
-
-        # Si c'est le premier chargement, on nettoie tout
-        if not self.project_items:
-            self.tree.clear()
-
-
-        for proj_id in self.projects:
-            # Si le projet existe déjà et qu'on ne force pas la mise à jour
-            if proj_id in self.project_workers and not force_update:
-                # Vérifier si le worker est toujours en cours d'exécution
-                if self.project_workers[proj_id].isRunning():
-                    continue
-
-            # Créer un nouvel item si nécessaire
-            if proj_id not in self.project_items:
-                proj_item = QTreeWidgetItem(self.tree, [f"Chargement... (ID: {proj_id})"])
-                self.project_items[proj_id] = proj_item
-            else:
-                proj_item = self.project_items[proj_id]
-
-            # Arrêter le worker existant s'il y en a un
-            if proj_id in self.project_workers:
-                worker = self.project_workers[proj_id]
-                if worker and worker.isRunning():
-                    try:
-                        worker.finished.disconnect()
-                        worker.error.disconnect()
-                        worker.stop()
-                        worker.wait()
-                    except:
-                        pass
-
-            # Créer un nouveau worker pour ce projet
-            worker = HttpWorker(
-                self._fetch_project_data,
-                proj_id
-            )
-            worker.finished.connect(lambda data, pid=proj_id: self._on_project_data_loaded(data, pid))
-            worker.error.connect(lambda error, pid=proj_id: self._on_project_error(error, pid))
-            worker.start()
-
-            self.project_workers[proj_id] = worker
-
-        # Remove projects no longer selected
-        to_remove = []
-        for proj_id, item in self.project_items.items():
-            if proj_id not in self.projects:
-                self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(item))
-                to_remove.append(proj_id)
-
-        for proj_id in to_remove:
-            del self.project_items[proj_id]
-            if proj_id in self.project_workers:
-                worker = self.project_workers[proj_id]
-                if worker.isRunning():
-                    worker.stop()
-                    worker.wait()
-                del self.project_workers[proj_id]
-            # Remove job workers for this project
-            keys_to_remove = [k for k in self.job_status_workers if k[0] == proj_id]
-            for k in keys_to_remove:
-                worker = self.job_status_workers[k]
-                if worker.isRunning():
-                    worker.stop()
-                    worker.wait()
-                del self.job_status_workers[k]
-
-    def _fetch_project_data(self, proj_id):
-        """Fonction exécutée dans un thread pour récupérer les données du projet"""
-        proj = self.gitlab_manager.get_project(proj_id)
-        pipelines = self.gitlab_manager.get_latest_pipeline(proj_id)
-        pipeline_data = []
-        for pipeline in pipelines:
-            jobs = self.gitlab_manager.get_pipeline_jobs(proj_id, pipeline.id)
-            # Déterminer l'ordre des stages basé sur l'ordre des jobs
-            stage_order = {}
-            for job in jobs:
-                if job.stage not in stage_order:
-                    stage_order[job.stage] = len(stage_order)
-            # Trier les jobs par ordre des stages inverse puis par ID
-            jobs.sort(key=lambda j: (-stage_order.get(j.stage, -1), j.id))
-            # Filtrer pour exclure les jobs en "created", mais garder les "manual" et "created" si ils sont dans un stage après le stage courant
-            # Pour l'instant, commenter le filtrage pour tester
-            # jobs = [j for j in jobs if j.status != 'created']
-            pipeline_data.append({
-                'pipeline': pipeline,
-                'jobs': jobs
-            })
-        return {
-            'proj_id': proj_id,
-            'proj_name': proj.name,
-            'pipelines': pipeline_data
-        }
-
-    def _on_project_data_loaded(self, data, proj_id):
-        """Appelé quand les données d'un projet sont chargées"""
-        # Vérifier si le projet existe toujours dans notre liste
-        if proj_id not in self.project_items:
-            return
-
-        # Vérifier si le worker est toujours valide
-        if proj_id not in self.project_workers or self.project_workers[proj_id] != self.sender():
-            return
-
-        proj_item = self.project_items[proj_id]
-        proj_name = data['proj_name']
-        pipelines_data = data['pipelines']
-
-        # Mettre à jour le texte du projet
-        proj_item.setText(0, f"{proj_name} (ID: {proj_id})")
-
-        # Police en gras et plus grosse pour les projets
-        font = proj_item.font(0)
-        font.setBold(True)
-        font.setPointSize(12)  # Un peu plus gros
-        proj_item.setFont(0, font)
-
-        # Couleur blanche pour les projets
-        proj_item.setForeground(0, QColor('white'))
-
-        # Créer un ensemble des IDs de pipelines existants
-        existing_pipeline_ids = set()
-        for i in range(proj_item.childCount()):
-            child = proj_item.child(i)
-            text = child.text(0)
-            if text.startswith("Pipeline "):
-                try:
-                    pipeline_id = int(text.split()[1])
-                    existing_pipeline_ids.add(pipeline_id)
-                except (ValueError, IndexError):
-                    pass
-
-        # Traiter chaque pipeline
-        for pipeline_info in pipelines_data:
-            pipeline = pipeline_info['pipeline']
-            jobs = pipeline_info['jobs']
-
-            # Ajouter seulement les pipelines qui ont des jobs
-            if not jobs:
-                continue
-
-            # Vérifier si ce pipeline est déjà affiché
-            if pipeline.id in existing_pipeline_ids:
-                # Mettre à jour le statut si nécessaire
-                for i in range(proj_item.childCount()):
-                    child = proj_item.child(i)
-                    if child.text(0).startswith(f"Pipeline {pipeline.id}"):
-                        current_text = child.text(0)
-                        expected_text = f"Pipeline {pipeline.id} - {pipeline.status}"
-                        if current_text != expected_text:
-                            child.setText(0, expected_text)
-                            # Mettre à jour les jobs aussi
-                            self._update_pipeline_jobs(child, jobs, proj_id)
-
-                            # Police en gras pour les pipelines
-                            font = child.font(0)
-                            font.setBold(True)
-                            font.setPointSize(11)
-                            child.setFont(0, font)
-
-                            # Couleur blanche pour les pipelines
-                            child.setForeground(0, QColor('white'))
-
-                            # Si l'option est activée, sélectionner le premier job de la pipeline mise à jour
-                            # if self.auto_select_updated and child.childCount() > 0:
-                            #     first_job_item = child.child(0)
-                            #     self.tree.setCurrentItem(first_job_item)
-                            #     self.on_item_clicked(first_job_item, 0)
-                        break
-            else:
-                # Ajouter le nouveau pipeline
-                pipeline_item = QTreeWidgetItem(proj_item, [f"Pipeline {pipeline.id} - {pipeline.status}"])
-
-                # Police en gras pour les pipelines
-                font = pipeline_item.font(0)
-                font.setBold(True)
-                font.setPointSize(11)
-                pipeline_item.setFont(0, font)
-
-                # Couleur blanche pour les pipelines
-                pipeline_item.setForeground(0, QColor('white'))
-
-                # Ajouter les jobs
-                for job in jobs:
-                    job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
-                    job_item.setData(0, Qt.ItemDataRole.UserRole, (proj_id, job.id))
-
-                    # Définir la couleur selon le statut
-                    self._set_job_color(job_item, job.status)
-
-                    # Démarrer un worker de statut pour ce job
-                    key = (proj_id, job.id)
-                    if key not in self.job_status_workers:
-                        worker = JobStatusWorker(self.gitlab_manager, proj_id, job.id, job_item, key)
-                        worker.status_updated.connect(self._on_job_status_updated)
-                        worker.finished_signal.connect(self._on_job_status_worker_finished)
-                        worker.start()
-                        self.job_status_workers[key] = worker
-
-                # Développer le pipeline
-                pipeline_item.setExpanded(True)
-
-                # Sélectionner automatiquement le premier job de la nouvelle pipeline pour afficher ses logs
-                if jobs:
-                    first_job_item = pipeline_item.child(0)
-                    self.tree.setCurrentItem(first_job_item)
-                    self.on_item_clicked(first_job_item, 0)
-
-        # Développer le projet si nécessaire
-        if not proj_item.isExpanded():
-            proj_item.setExpanded(True)
-
-    def _update_pipeline_jobs(self, pipeline_item, jobs, proj_id):
-        """Met à jour les jobs d'un pipeline existant"""
-        # Créer un ensemble des IDs de jobs existants
-        existing_job_ids = set()
-        for i in range(pipeline_item.childCount()):
-            child = pipeline_item.child(i)
-            data = child.data(0, Qt.ItemDataRole.UserRole)
-            if data and len(data) == 2:
-                _, job_id = data
-                existing_job_ids.add(job_id)
-
-        # Ajouter ou mettre à jour les jobs
-        for job in jobs:
-            if job.id in existing_job_ids:
-                # Mettre à jour le statut
-                for i in range(pipeline_item.childCount()):
-                    child = pipeline_item.child(i)
-                    data = child.data(0, Qt.ItemDataRole.UserRole)
-                    if data and len(data) == 2 and data[1] == job.id:
-                        expected_text = f"{job.name} - {job.status}"
-                        if child.text(0) != expected_text:
-                            child.setText(0, expected_text)
-                            # Mettre à jour la couleur
-                            self._set_job_color(child, job.status)
-                        break
-            else:
-                # Ajouter le nouveau job
-                job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
-                job_item.setData(0, Qt.ItemDataRole.UserRole, (proj_id, job.id))
-
-                # Définir la couleur selon le statut
-                self._set_job_color(job_item, job.status)
-
-                # Démarrer un worker de statut pour le nouveau job
-                key = (proj_id, job.id)
-                if key not in self.job_status_workers:
-                    worker = JobStatusWorker(self.gitlab_manager, proj_id, job.id, job_item, key)
-                    worker.status_updated.connect(self._on_job_status_updated)
-                    worker.finished_signal.connect(self._on_job_status_worker_finished)
-                    worker.start()
-                    self.job_status_workers[key] = worker
-
-    def _on_project_error(self, error, proj_id):
-        """Appelé en cas d'erreur lors du chargement d'un projet"""
-        if proj_id in self.project_items:
-            self.project_items[proj_id].setText(0, f"Erreur: {error}")
-
-        # Réessayer après une minute en cas d'erreur
-        QTimer.singleShot(60000, lambda: self.update_projects(force_update=True))
-
-    def on_item_clicked(self, item, column):
-        self.job_manager.on_item_clicked(item, column)
-
-    def _on_item_clicked_old(self, item, column):
-        data = item.data(0, Qt.ItemDataRole.UserRole)
-        if not data:
-            return
-
-        # Reset to log view
-        self.right_stack.setCurrentIndex(0)
-        self.current_manual_job = None
-
-        # Arrêter le worker précédent s'il existe
-        if self.log_worker:
-            self.log_worker.stop()
-            self.log_worker.wait()
-            self.log_worker = None
-
-        if self.job_data_worker:
-            self.job_data_worker.stop()
-            self.job_data_worker.wait()
-            self.job_data_worker = None
-
-        proj_id, job_id = data
-        self.current_job = (proj_id, job_id)
-
-        # Afficher un message de chargement
-        self.log_view.setPlainText("Chargement des logs en cours...")
-        self._update_loading_display()
-
-        # Use worker to fetch job data
-        self.job_data_worker = JobDataWorker(self.gitlab_manager, proj_id, job_id)
-        self.job_data_worker.data_ready.connect(self._on_job_data_received)
-        self.job_data_worker.start()
-
-    def _on_job_data_received(self, job_data):
-        """Called when job data (status and logs) is received"""
-        # Clean up the worker
-        if self.job_data_worker:
-            self.job_data_worker.stop()
-            self.job_data_worker.wait()
-            self.job_data_worker = None
-
-        if job_data is None:
-            self.show_error("Impossible de récupérer les données du job")
-            return
-
-        proj_id, job_id = self.current_job
-        job_status = job_data.get('status')
-        log_content = job_data.get('trace')
-
-        if job_status == 'manual':
-            self.current_manual_job = (proj_id, job_id)
-            self.right_stack.setCurrentIndex(1)  # show launch widget
-            return
-
-        self._loading_active = job_status not in ['success', 'failed', 'canceled', 'skipped']
-
-        print(f"Statut du job: {job_status}")
-        print(f"Taille des logs: {len(log_content) if log_content else 0} caractères")
-
-        if log_content:
-            self.update_log_display(log_content)
-            if self._loading_active:
-                self.loading_timer.start(500)
-            # Si le job est en cours, démarrer le suivi en temps réel
-            if self._loading_active:
-                print("Démarrage du suivi en temps réel...")
-                self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
-                self.log_worker.log_ready.connect(self.update_log_display)
-                self.log_worker.error_occurred.connect(self.show_error)
-                self.log_worker.job_finished.connect(self._on_job_finished)
-                self.log_worker.start()
-            else:
-                print("Le job est terminé, pas de suivi en temps réel nécessaire")
-
-                # Afficher un message de statut si le job est terminé
-                status_messages = {
-                    'success': '✅ Le job s\'est terminé avec succès',
-                    'failed': '❌ Le job a échoué',
-                    'canceled': '⏹️ Le job a été annulé',
-                    'skipped': '⏭️ Le job a été ignoré'
-                }
-
-                if job_status in status_messages:
-                    cursor = self.log_view.textCursor()
-                    cursor.movePosition(QTextCursor.MoveOperation.End)
-                    cursor.insertText('\n\n' + '='*80 + '\n')
-                    cursor.insertText(status_messages[job_status] + '\n')
-        else:
-            # Si pas de logs initiaux, afficher un message selon le statut
-            if job_status in ['success', 'failed', 'canceled', 'skipped']:
-                self.show_error("Aucun log disponible pour ce job terminé")
-            else:
-                self.log_view.setPlainText("Logs en cours de chargement...")
-                self._update_loading_display()
-                if self._loading_active:
-                    self.loading_timer.start(500)
-                # Démarrer le suivi en temps réel même sans logs initiaux
-                print("Démarrage du suivi en temps réel...")
-                self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
-                self.log_worker.log_ready.connect(self.update_log_display)
-                self.log_worker.error_occurred.connect(self.show_error)
-                self.log_worker.job_finished.connect(self._on_job_finished)
-                self.log_worker.start()
-
-    def _on_job_finished(self):
-        """Appelé quand un job est terminé (succès, échec, etc.)"""
-        if self.log_worker:
-            status = self.log_worker.get_job_status()
-            if status:
-                status_messages = {
-                    'success': '✅ Le job s\'est terminé avec succès',
-                    'failed': '❌ Le job a échoué',
-                    'canceled': '⏹️ Le job a été annulé',
-                    'skipped': '⏭️ Le job a été ignoré'
-                }
-                message = status_messages.get(status, f'Le job est terminé (statut: {status})')
-
-                # Ajouter un message à la fin des logs
-                cursor = self.log_view.textCursor()
-                cursor.movePosition(QTextCursor.MoveOperation.End)
-                cursor.insertText('\n\n' + '='*80 + '\n')
-                cursor.insertText(message + '\n')
-                self._loading_active = False
-                self.loading_timer.stop()
-                self._update_loading_display()
-                # Arrêter le worker car le job est terminé
-                self.log_worker.stop()
-                self.log_worker.wait()
-
-    def _set_job_color(self, job_item, status):
-        """Définit la couleur (et l'animation) de l'item job selon son statut
-        Pour 'running', fait clignoter la couleur du texte ET le fond, et alterne le gras."""
-        # Gérer l'arrêt de l'animation précédente si elle existe
-        job_id_tuple = None
-        data = job_item.data(0, Qt.ItemDataRole.UserRole)
-        if data and isinstance(data, tuple) and len(data) == 2:
-            job_id_tuple = (data[0], data[1])
-
-        # Arrêter et supprimer l'animation si le statut n'est plus "running"
-        if job_id_tuple is not None:
-            if job_id_tuple in self.job_animations:
-                timer, state = self.job_animations[job_id_tuple]
-                timer.stop()
-                timer.deleteLater()
-                del self.job_animations[job_id_tuple]
-
-        if status == 'success':
-            color = QColor(100, 255, 100)  # Vert clair
-            job_item.setForeground(0, color)
-            job_item.setBackground(0, QColor(0, 0, 0, 0))  # Transparent/no background
-            font = job_item.font(0)
-            font.setBold(False)
-            job_item.setFont(0, font)
-        elif status == 'running':
-            # Animation de clignotement bleu + fond + gras
-            if job_id_tuple is not None:
-                # Deux teintes de bleu pour le texte
-                color1 = QColor(100, 150, 255)  # Bleu clair 1
-                color2 = QColor(30, 80, 200)    # Bleu plus foncé
-                # Deux couleurs de fond (subtiles)
-                bg1 = QColor(230, 240, 255)    # Fond bleu très clair
-                bg2 = QColor(200, 220, 245)    # Fond bleu-gris
-                # Timer pour alterner
-                def toggle_color():
-                    current = self.job_animations[job_id_tuple][1]
-                    next_state = 1 - current
-                    if next_state == 0:
-                        fg = color1
-                        bg = bg1
-                        bold = True
-                    else:
-                        fg = color2
-                        bg = bg2
-                        bold = False
-                    job_item.setForeground(0, fg)
-                    job_item.setBackground(0, bg)
-                    font = job_item.font(0)
-                    font.setBold(bold)
-                    job_item.setFont(0, font)
-                    self.job_animations[job_id_tuple] = (timer, next_state)
-                timer = QTimer(self)
-                timer.setInterval(250)  # 250 ms pour un clignotement plus perceptible
-                timer.timeout.connect(toggle_color)
-                # Initialiser avec la première couleur
-                job_item.setForeground(0, color1)
-                job_item.setBackground(0, bg1)
-                font = job_item.font(0)
-                font.setBold(True)
-                job_item.setFont(0, font)
-                self.job_animations[job_id_tuple] = (timer, 0)
-                timer.start()
-            else:
-                # Fallback sans animation si pas d'identifiant
-                color = QColor(100, 150, 255)
-                job_item.setForeground(0, color)
-                job_item.setBackground(0, QColor(230, 240, 255))
-                font = job_item.font(0)
-                font.setBold(True)
-                job_item.setFont(0, font)
-        elif status == 'failed':
-            color = QColor(255, 100, 100)  # Rouge clair
-            job_item.setForeground(0, color)
-            job_item.setBackground(0, QColor(0, 0, 0, 0))
-            font = job_item.font(0)
-            font.setBold(False)
-            job_item.setFont(0, font)
-        else:
-            color = QColor('white')  # Blanc pour les autres statuts
-            job_item.setForeground(0, color)
-            job_item.setBackground(0, QColor(0, 0, 0, 0))
-            font = job_item.font(0)
-            font.setBold(False)
-            job_item.setFont(0, font)
-
-    def _on_job_status_updated(self, status):
-        JobColorManager.on_job_status_updated(self, status)
-
-    def _on_job_status_updated_old(self, status):
-        """Appelé quand le statut d'un job est mis à jour"""
-        worker = self.sender()
-        if worker and hasattr(worker, 'job_item'):
-            current_text = worker.job_item.text(0)
-            if ' - ' in current_text:
-                parts = current_text.split(' - ')
-                name = parts[0]
-                current_status = parts[1] if len(parts) > 1 else ''
-                new_text = f"{name} - {status}"
-                if current_text != new_text:
-                    worker.job_item.setText(0, new_text)
-                    # Mettre à jour la couleur selon le nouveau statut
-                    self._set_job_color(worker.job_item, status)
-                    # Si le statut passe à "running" ou "failed", sélectionner automatiquement
-                    if status in ['running', 'failed'] and current_status != status:
-                        self.tree.setCurrentItem(worker.job_item)
-                        self.on_item_clicked(worker.job_item, 0)
-
-                    # Hipster Pipe : célébration quand un job passe de running à success
-                    if status == 'success' and current_status == 'running' and self.hipster_pipe_enabled:
-                        print(f"Hipster Pipe triggered! Job {worker.job_id} went from {current_status} to {status}")
-                        self._show_hipster_pipe_animation()
-
-    def update_log_display(self, log_content):
-        self.log_display.update_log_display(log_content)
-
-    def _update_log_display_old(self, log_content):
-        # Éviter le scintillement en ne mettant à jour que si le contenu a changé
-        if log_content == self.last_log_content:
-            return
-        self.last_log_content = log_content
-
-        # Check if we can append incrementally
-        current_plain = self.log_view.toPlainText()
-        loading_suffix = '\n' + self._loading_text if self._loading_active else ''
-        if current_plain.endswith(loading_suffix):
-            current_plain = current_plain[:-len(loading_suffix)]
-
-        if log_content.startswith(current_plain) and current_plain:
-            # Append the new part incrementally
-            new_part = log_content[len(current_plain):]
-            cursor = self.log_view.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-
-            # Remove loading if present
-            document = self.log_view.document()
-            last_block = document.lastBlock()
-            if last_block.text() in ['·', '··', '···']:
-                cursor.setPosition(last_block.position())
-                cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
-                cursor.removeSelectedText()
-                if cursor.position() > 0:
-                    cursor.setPosition(cursor.position() - 1)
-                    if self.log_view.toPlainText()[cursor.position()] == '\n':
-                        cursor.deleteChar()
-
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-
-            # Process and append new part
-            cleaned_new_part = self._clean_ansi_codes(new_part)
-            self._process_ansi_codes(cleaned_new_part, cursor)
-
-            # Scroll to bottom
-            scrollbar = self.log_view.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
-
-            self._update_loading_display()
-        else:
-            # Full update
-            self.log_view.clear()
-
-            # Définir la police et la taille pour le contenu
-            current_font = self.log_view.font()
-            current_font.setPointSize(20)  # Taille de police augmentée pour les logs
-            self.log_view.setFont(current_font)
-
-            # Créer un curseur au début du document
-            cursor = self.log_view.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.Start)
-
-            # Appliquer le format par défaut avec une police plus grande
-            default_format = QTextCharFormat()
-            default_format.setForeground(QColor("white"))
-            default_format.setFontPointSize(20)  # Taille de police augmentée pour correspondre à l'interface
-            cursor.setCharFormat(default_format)
-
-            # Nettoyer le contenu des codes ANSI inutiles
-            cleaned_content = self._clean_ansi_codes(log_content)
-
-            # Traiter le contenu avec les codes ANSI
-            self._process_ansi_codes(cleaned_content, cursor)
-
-            # Défiler vers le bas pour voir les derniers logs
-            scrollbar = self.log_view.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
-
-            self._update_loading_display()
-
-    def _clean_ansi_codes(self, text):
-        """Nettoie le texte des séquences de contrôle inutiles tout en préservant les couleurs"""
-        return LogFormatter.clean_ansi_codes(text)
-
-    def _process_ansi_codes(self, text, cursor):
-        """Traite les codes ANSI et les convertit en format de texte Qt"""
-        current_font = self.log_view.font()
-        font_size = current_font.pointSize()
-        LogFormatter.process_ansi_codes(text, cursor, font_size)
-
-    def show_error(self, error_message):
-        self.log_view.setPlainText(error_message)
-
     def setup_timers(self):
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_projects)
+        self.timer.timeout.connect(self.project_manager.update_projects)
         # Commencer avec un intervalle plus long après le chargement initial
         QTimer.singleShot(10000, lambda: self.timer.start(3000))  # Attendre 10s puis mettre à jour toutes les 2s
 
         self.loading_timer = QTimer(self)
-        self.loading_timer.timeout.connect(self._animate_loading_dots)
+        self.loading_timer.timeout.connect(self.loading_animation.animate_dots)
 
         # Planifier une première mise à jour différée pour laisser le temps à l'interface de se charger
-        QTimer.singleShot(8000, self.update_projects)
+        QTimer.singleShot(8000, self.project_manager.update_projects)
 
     def closeEvent(self, event):
         # Sauvegarder automatiquement la géométrie et les proportions avant de fermer
-        self._auto_save_geometry()
+        self.config_manager.auto_save_geometry()
 
         # Arrêter tous les workers en cours d'exécution
         if self.log_worker:

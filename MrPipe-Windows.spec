@@ -14,10 +14,11 @@ a = Analysis(
     pathex=[current_dir],
     binaries=[],
     datas=[
-        ('image.png', '.'),  # Include logo in the bundle
-        ('ico.ico', '.'),  # Include ico icon for Windows
+        ('assets/image.png', 'assets'),  # Include splash image
+        ('assets/ico.ico', 'assets'),  # Include window icon for Windows
+        ('assets/logo.ico', 'assets'),  # Include app icon for Windows
         ('version_info.txt', '.'),  # Include version info
-        ('animation.mp4', '.'),  # Include Hipster Pipe animation video
+        ('assets/animation.mp4', 'assets'),  # Include Hipster Pipe animation video
     ],
     hiddenimports=[
         'PyQt6',
@@ -78,7 +79,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='ico.ico',  # Use ico.ico as icon for Windows
+    icon='assets/logo.ico',  # Use logo.ico as icon for Windows
     version_file='version_info.txt',  # Add version info for Windows
 )
 

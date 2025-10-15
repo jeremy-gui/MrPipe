@@ -14,10 +14,11 @@ a = Analysis(
     pathex=[current_dir],
     binaries=[],
     datas=[
-        ('image.png', '.'),  # Include logo in the bundle
-        ('logo.icns', '.'),  # Include icns icon
-        ('logo.ico', '.'),  # Include icns icon
-        ('animation.mp4', '.'),  # Include Hipster Pipe animation video
+        ('assets/image.png', 'assets'),  # Include splash image
+        ('assets/logo.icns', 'assets'),  # Include icns icon
+        ('assets/logo.ico', 'assets'),  # Include ico icon
+        ('assets/ico.ico', 'assets'),  # Include window icon
+        ('assets/animation.mp4', 'assets'),  # Include Hipster Pipe animation video
     ],
     hiddenimports=[
         'PyQt6',
@@ -76,7 +77,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='logo.png',  # Use logo.png as icon (PyInstaller will convert with Pillow)
+    icon='assets/logo.icns',  # Use logo.icns as icon
 )
 
 app = BUNDLE(
@@ -85,7 +86,7 @@ app = BUNDLE(
     a.zipfiles,
     a.datas,
     name='Mr. Pipe.app',
-    icon='logo.icns',  # Use logo.icns as app icon
+    icon='assets/logo.icns',  # Use logo.icns as app icon
     bundle_identifier='com.mrpipe.app',
     version='1.0.0',
     info_plist={

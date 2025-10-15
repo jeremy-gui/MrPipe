@@ -29,7 +29,7 @@ class ConfigManager:
                         self.window.projects = [int(p.strip()) for p in projects.split(',') if p.strip()]
                         self.window.gitlab_manager = GitLabManager(url, token)
                         self.window.log_view.setPlainText("Chargement des projets...")
-                        self.window.update_projects()
+                        self.window.project_manager.update_projects()
                     except Exception as e:
                         self.window.log_view.setPlainText(f"Erreur lors du chargement de la configuration : {str(e)}")
                 else:

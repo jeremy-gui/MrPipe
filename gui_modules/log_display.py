@@ -57,7 +57,7 @@ class LogDisplay:
             scrollbar = self.window.log_view.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
 
-            self.window._update_loading_display()
+            self.window.loading_animation.update_display()
         else:
             # Full update
             self.window.log_view.clear()
@@ -87,4 +87,4 @@ class LogDisplay:
             scrollbar = self.window.log_view.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
 
-            self.window._update_loading_display()
+            self.window.loading_animation.update_display()

@@ -31,7 +31,7 @@ def main():
 
         # Créer le splash screen
         print("Loading splash pix")
-        splash_pix = QPixmap(get_resource_path("image.png"))
+        splash_pix = QPixmap(get_resource_path("assets/image.png"))
         print(f"Splash pix is null: {splash_pix.isNull()}")
         if splash_pix.isNull():
             # Continuer sans splash screen
