@@ -322,7 +322,7 @@ class ProjectManager:
 
     def _on_job_data_received(self, job_data):
         """Called when job data (status and logs) is received"""
-        # Nettoyer le worker
+        # Clean up the worker
         if self.main_window.job_data_worker:
             self.main_window.job_data_worker.stop()
             self.main_window.job_data_worker.wait()
@@ -334,44 +334,22 @@ class ProjectManager:
 
         proj_id, job_id = self.main_window.current_job
         job_status = job_data.get('status')
-        # Récupérer les logs de manière plus robuste
-        log_content = job_data.get('trace', '')
-        if not log_content and job_status:
-            try:
-                # Essayer de récupérer les logs directement si non présents
-                log_content = self.main_window.gitlab_manager.get_job_trace(proj_id, job_id)
-            except Exception as e:
-                log_content = f"Erreur lors de la récupération des logs: {e}"
-
-        # Mise à jour de l'interface utilisateur
-        if log_content:
-            self.log_processor.update_log_display(log_content)
-        else:
-            # Afficher un message si pas de logs disponibles
-            self.log_processor.update_log_display("Aucun log disponible pour ce job")
+        log_content = job_data.get('trace')
 
         if job_status == 'manual':
             self.main_window.current_manual_job = (proj_id, job_id)
-            self.main_window.right_stack.setCurrentIndex(1)  # Afficher le widget de lancement
+            self.main_window.right_stack.setCurrentIndex(1)  # show launch widget
             return
 
-        # Mettre à jour l'état de chargement en fonction du statut du job
-        is_job_running = job_status not in ['success', 'failed', 'canceled', 'skipped']
-        self.log_processor._loading_active = is_job_running
+        self.log_processor._loading_active = job_status not in ['success', 'failed', 'canceled', 'skipped']
 
         print(f"Statut du job: {job_status}")
         print(f"Taille des logs: {len(log_content) if log_content else 0} caractères")
 
-        # Mettre à jour l'affichage des logs
         if log_content:
             self.log_processor.update_log_display(log_content)
-            
-            # Démarrer le timer de chargement si le job est en cours
-            if is_job_running:
+            if self.log_processor._loading_active:
                 self.main_window.loading_timer.start(500)
-            else:
-                # Afficher un message si pas de logs disponibles
-                self.log_processor.update_log_display("Aucun log disponible pour ce job")
             # Si le job est en cours, démarrer le suivi en temps réel
             if self.log_processor._loading_active:
                 print("Démarrage du suivi en temps réel...")
