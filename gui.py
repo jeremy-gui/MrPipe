@@ -14,239 +14,17 @@ import sys
 from gitlab_manager import GitLabManager
 from PyQt6 import sip
 
-
-class HttpWorker(QThread):
-    finished = pyqtSignal(object)
-    error = pyqtSignal(str)
-
-    def __init__(self, func, *args, **kwargs):
-        super().__init__()
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
-        self._is_running = True
-
-    def run(self):
-        if not self._is_running:
-            return
-
-        try:
-            result = self.func(*self.args, **self.kwargs)
-            if self._is_running:
-                self.finished.emit(result)
-        except Exception as e:
-            if self._is_running:
-                self.error.emit(f"Erreur: {str(e)}")
-
-    def stop(self):
-        self._is_running = False
+# Import refactored modules
+from gui_modules.workers import (
+    HttpWorker, ProjectSyncWorker, LaunchWorker, LogWorker,
+    JobStatusWorker, JobDataWorker
+)
+from gui_modules.dialogs import ConfigDialog, AboutDialog
+from gui_modules.styles import get_dark_mode_stylesheet, get_log_view_stylesheet
+from gui_modules.log_formatter import LogFormatter
 
 
-class ProjectSyncWorker(QThread):
-    """Worker for synchronizing project list"""
-    sync_done = pyqtSignal(list)
-    sync_error = pyqtSignal(str)
-
-    def __init__(self, url, token):
-        super().__init__()
-        self.url = url
-        self.token = token
-        self._is_running = True
-
-    def run(self):
-        if not self._is_running:
-            return
-        try:
-            print(f"Syncing projects for {self.url}")
-            manager = GitLabManager(self.url, self.token)
-            projects = manager.get_all_projects()
-            print(f"Synced {len(projects)} projects")
-            if self._is_running:
-                self.sync_done.emit(projects)
-        except Exception as e:
-            print(f"Sync error: {e}")
-            if self._is_running:
-                self.sync_error.emit(str(e))
-
-    def stop(self):
-        self._is_running = False
-
-
-class LaunchWorker(QThread):
-    """Worker for launching manual jobs"""
-    launch_done = pyqtSignal()
-    launch_error = pyqtSignal(str)
-
-    def __init__(self, gitlab_manager, proj_id, job_id):
-        super().__init__()
-        self.gitlab_manager = gitlab_manager
-        self.proj_id = proj_id
-        self.job_id = job_id
-        self._is_running = True
-
-    def run(self):
-        if not self._is_running:
-            return
-        try:
-            project = self.gitlab_manager.get_project(self.proj_id)
-            job = project.jobs.get(self.job_id)
-            job.play()
-            if self._is_running:
-                self.launch_done.emit()
-        except Exception as e:
-            if self._is_running:
-                self.launch_error.emit(str(e))
-
-    def stop(self):
-        self._is_running = False
-
-
-class LogWorker(QThread):
-    """Worker spécifique pour la récupération des logs"""
-    log_ready = pyqtSignal(str)
-    job_finished = pyqtSignal()
-    error_occurred = pyqtSignal(str)  # Signal pour les erreurs
-
-    def __init__(self, gitlab_manager, project_id, job_id):
-        super().__init__()
-        self.gitlab_manager = gitlab_manager
-        self.project_id = project_id
-        self.job_id = job_id
-        self._is_running = True
-        self._job_status = None
-        self.logs_loaded = False
-
-    def run(self):
-        # Variable pour suivre si on a déjà chargé les logs
-        logs_loaded = False
-
-        while self._is_running:
-            if not self._is_running:
-                return
-
-            # Vérifier l'état actuel du job
-            status = self._get_job_status(self.project_id, self.job_id)
-            if status is None:
-                self._is_running = False
-                return
-
-            # Charger les logs au moins une fois, même si le job est terminé
-            if not logs_loaded or self._job_status not in ['success', 'failed', 'canceled', 'skipped']:
-                try:
-                    trace = self.gitlab_manager.get_job_trace(self.project_id, self.job_id)
-                    self._on_log_received(trace)
-                    logs_loaded = True
-                except Exception as e:
-                    self.error_occurred.emit(str(e))
-                    logs_loaded = True  # Pour éviter de retry en boucle
-
-            # Si le job est terminé, on arrête la boucle
-            if self._job_status in ['success', 'failed', 'canceled', 'skipped']:
-                self.job_finished.emit()
-                self._is_running = False
-                break
-
-            # Attendre avant la prochaine itération
-            self.msleep(1000)  # Vérifier toutes les 1 seconde pour les logs
-
-    def _on_log_received(self, log):
-        if self._is_running:
-            self.log_ready.emit(log)
-
-    def stop(self):
-        self._is_running = False
-
-    def _get_job_status(self, project_id, job_id):
-        """Récupère le statut d'un job spécifique"""
-        try:
-            project = self.gitlab_manager.get_project(project_id)
-            job = project.jobs.get(job_id)
-            self._job_status = job.status
-            return self._job_status
-        except Exception as e:
-            print(f"Erreur lors de la récupération du statut du job: {e}")
-            # Ne pas émettre ici, géré dans run()
-            return None
-
-    def get_job_status(self):
-        return self._job_status
-
-
-class JobStatusWorker(QThread):
-    """Worker pour surveiller le statut d'un job spécifique"""
-    status_updated = pyqtSignal(str)
-    finished_signal = pyqtSignal(tuple)  # Emit the key when finished
-
-    def __init__(self, gitlab_manager, proj_id, job_id, job_item, key):
-        super().__init__()
-        self.gitlab_manager = gitlab_manager
-        self.proj_id = proj_id
-        self.job_id = job_id
-        self.job_item = job_item  # Référence à l'item QTreeWidgetItem pour mise à jour
-        self.key = key
-        self._is_running = True
-
-    def run(self):
-        while self._is_running:
-            try:
-                project = self.gitlab_manager.get_project(self.proj_id)
-                job = project.jobs.get(self.job_id)
-                status = job.status
-                self.status_updated.emit(status)
-
-                # Si le job est terminé, arrêter le worker
-                if status in ['success', 'failed', 'canceled', 'skipped']:
-                    self._is_running = False
-                    self.finished_signal.emit(self.key)
-                    break
-            except Exception as e:
-                print(f"Erreur mise à jour statut job {self.job_id}: {e}")
-                self._is_running = False
-                self.finished_signal.emit(self.key)
-                break
-
-            self.msleep(2000)  # Vérifier toutes les 2 secondes
-
-    def stop(self):
-        self._is_running = False
-
-
-class JobDataWorker(QThread):
-    """Worker for fetching job data (status and logs)"""
-    data_ready = pyqtSignal(dict)
-
-    def __init__(self, gitlab_manager, proj_id, job_id):
-        super().__init__()
-        self.gitlab_manager = gitlab_manager
-        self.proj_id = proj_id
-        self.job_id = job_id
-        self._is_running = True
-
-    def run(self):
-        if not self._is_running:
-            return
-        try:
-            project = self.gitlab_manager.get_project(self.proj_id)
-            job = project.jobs.get(self.job_id)
-            status = job.status
-
-            # Try to get logs
-            try:
-                trace = job.trace().decode('utf-8')
-                data = {'status': status, 'trace': trace}
-            except Exception as e:
-                print(f"Erreur lors de la récupération des logs: {e}")
-                data = {'status': status, 'trace': None}
-
-            if self._is_running:
-                self.data_ready.emit(data)
-        except Exception as e:
-            print(f"Erreur lors de la récupération des données du job: {e}")
-            if self._is_running:
-                self.data_ready.emit(None)
-
-    def stop(self):
-        self._is_running = False
+# Workers are now imported from gui.workers module
 
 
 class MainWindow(QMainWindow):
@@ -305,18 +83,7 @@ class MainWindow(QMainWindow):
             self.log_view.setAcceptRichText(True)
 
             # Utiliser une configuration CSS améliorée
-            self.log_view.setStyleSheet("""
-                QTextEdit {
-                    background-color: #1e1e1e;
-                    color: #ffffff;
-                    font-family: 'Courier New', monospace;
-                    font-size: 16pt;
-                    line-height: 1.5;
-                    padding: 10px;
-                    selection-background-color: #4a90d9;
-                    selection-color: white;
-                }
-            """)
+            self.log_view.setStyleSheet(get_log_view_stylesheet())
         except Exception as e:
             print(f"Erreur lors de la configuration de la police: {e}")
             # Configuration minimale en cas d'échec
@@ -401,202 +168,9 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(about_action)
 
         # Apply dark mode stylesheet
-        self._apply_dark_mode_stylesheet()
+        self.setStyleSheet(get_dark_mode_stylesheet())
 
-    def _apply_dark_mode_stylesheet(self):
-        """Apply comprehensive dark mode stylesheet to all widgets"""
-        dark_stylesheet = """
-        /* Main window background */
-        QMainWindow {
-            background-color: #2b2b2b;
-            color: #ffffff;
-        }
-
-        /* Tree widget */
-        QTreeWidget {
-            background-color: #2b2b2b;
-            color: #ffffff;
-            border: 1px solid #555555;
-            alternate-background-color: #333333;
-        }
-
-        QTreeWidget::item {
-            background-color: transparent;
-            border-bottom: 1px solid #444444;
-            padding: 2px;
-        }
-
-        QTreeWidget::item:selected {
-            background-color: #4a90d9;
-            color: white;
-        }
-
-        QTreeWidget::item:hover {
-            background-color: #404040;
-        }
-
-        /* Headers */
-        QHeaderView::section {
-            background-color: #404040;
-            color: #ffffff;
-            border: 1px solid #555555;
-            padding: 4px;
-        }
-
-        /* Buttons */
-        QPushButton {
-            background-color: #404040;
-            color: #ffffff;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 12px;
-        }
-
-        QPushButton:hover {
-            background-color: #555555;
-        }
-
-        QPushButton:pressed {
-            background-color: #666666;
-        }
-
-        QPushButton:disabled {
-            background-color: #333333;
-            color: #888888;
-        }
-
-        /* Line edits */
-        QLineEdit {
-            background-color: #404040;
-            color: #ffffff;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 6px;
-            selection-background-color: #4a90d9;
-        }
-
-        QLineEdit:focus {
-            border-color: #4a90d9;
-        }
-
-        /* Labels */
-        QLabel {
-            color: #ffffff;
-        }
-
-        /* Dialogs */
-        QDialog {
-            background-color: #2b2b2b;
-            color: #ffffff;
-        }
-
-        /* List widgets */
-        QListWidget {
-            background-color: #2b2b2b;
-            color: #ffffff;
-            border: 1px solid #555555;
-            alternate-background-color: #333333;
-        }
-
-        QListWidget::item {
-            background-color: transparent;
-            color: #ffffff;
-            border-bottom: 1px solid #444444;
-            padding: 4px;
-        }
-
-        QListWidget::item:selected {
-            background-color: #4a90d9;
-            color: white;
-        }
-
-        QListWidget::item:hover {
-            background-color: #404040;
-        }
-
-        /* Checkboxes */
-        QCheckBox {
-            color: #ffffff;
-        }
-
-        QCheckBox::indicator {
-            background-color: #404040;
-            border: 1px solid #555555;
-            width: 16px;
-            height: 16px;
-        }
-
-        QCheckBox::indicator:checked {
-            background-color: #4a90d9;
-            border: 1px solid #4a90d9;
-        }
-
-        /* Dialog button box */
-        QDialogButtonBox {
-            button-layout: 0;
-        }
-
-        /* Menu bar */
-        QMenuBar {
-            background-color: #404040;
-            color: #ffffff;
-            border-bottom: 1px solid #555555;
-        }
-
-        QMenuBar::item {
-            background-color: transparent;
-            color: #ffffff;
-            padding: 4px 8px;
-        }
-
-        QMenuBar::item:selected {
-            background-color: #555555;
-        }
-
-        /* Menus */
-        QMenu {
-            background-color: #404040;
-            color: #ffffff;
-            border: 1px solid #555555;
-        }
-
-        QMenu::item {
-            background-color: transparent;
-            color: #ffffff;
-            padding: 4px 20px;
-        }
-
-        QMenu::item:selected {
-            background-color: #555555;
-        }
-
-        /* Message boxes */
-        QMessageBox {
-            background-color: #2b2b2b;
-            color: #ffffff;
-        }
-
-        QMessageBox QLabel {
-            color: #ffffff;
-        }
-
-        /* Splitter */
-        QSplitter::handle {
-            background-color: #555555;
-        }
-
-        QSplitter::handle:horizontal {
-            width: 2px;
-        }
-
-        QSplitter::handle:hover {
-            background-color: #666666;
-        }
-
-        /* Text edit is handled separately in the code */
-        """
-        self.setStyleSheet(dark_stylesheet)
+    # Stylesheet now imported from gui.styles module
 
     def _animate_loading_dots(self):
         states = ["·", "··", "···"]
@@ -869,108 +443,13 @@ class MainWindow(QMainWindow):
                 self.hipster_video_widget = None
 
     def show_config(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Configuration")
-        layout = QVBoxLayout(dialog)
-
-        # Récupérer les valeurs actuelles ou les valeurs par défaut
-        current_url = self.config.get('GitLab', 'url', fallback='https://gitlab.com')
-        current_token = self.config.get('GitLab', 'token', fallback='')
-        current_projects = self.config.get('GitLab', 'projects', fallback='')
-
-        url_label = QLabel("GitLab URL:")
-        self.url_edit = QLineEdit(current_url)
-        layout.addWidget(url_label)
-        layout.addWidget(self.url_edit)
-
-        token_label = QLabel("Private Token:")
-        self.token_edit = QLineEdit(current_token)
-        self.token_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(token_label)
-        layout.addWidget(self.token_edit)
-
-        # Sync button
-        sync_button = QPushButton("Sync Projects")
-        self.sync_button = sync_button
-        sync_button.clicked.connect(lambda: self._sync_projects(dialog))
-        layout.addWidget(sync_button)
-
-        # Projects list
-        projects_label = QLabel("Select projects to monitor (max 10):")
-        layout.addWidget(projects_label)
-
-        # Search field
-        search_label = QLabel("Search projects:")
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Filter by name or ID...")
-        self.search_edit.textChanged.connect(self._filter_projects)
-        layout.addWidget(search_label)
-        layout.addWidget(self.search_edit)
-
-        self.projects_list = QListWidget()
-        self.projects_list.itemChanged.connect(self._limit_selection)
-        layout.addWidget(self.projects_list)
-
-        # Load saved projects
-        saved_projects = set(int(p.strip()) for p in current_projects.split(',') if p.strip())
-
-        # Load cached available projects
-        cached_projects = self.config.get('GitLab', 'available_projects', fallback=None)
-        if cached_projects:
-            try:
-                available = json.loads(cached_projects)
-                self.projects_list.clear()
-                for p in available:
-                    item = QListWidgetItem(f"{p['name']} (ID: {p['id']})")
-                    item.setData(Qt.ItemDataRole.UserRole, p['id'])
-                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    if p['id'] in saved_projects:
-                        item.setCheckState(Qt.CheckState.Checked)
-                    else:
-                        item.setCheckState(Qt.CheckState.Unchecked)
-                    self.projects_list.addItem(item)
-            except Exception as e:
-                print(f"Error loading cached projects: {e}")
-
-        # Auto-sync removed to prevent freezing
-
-        # Option UI - layout horizontal pour aligner le texte et la checkbox
-        auto_select_layout = QHBoxLayout()
-        auto_select_label = QLabel("Automatically select updated popped projects:")
-        self.auto_select_checkbox = QCheckBox()
-        self.auto_select_checkbox.setChecked(self.auto_select_updated)
-        auto_select_layout.addWidget(auto_select_label)
-        auto_select_layout.addWidget(self.auto_select_checkbox)
-        auto_select_layout.addStretch()  # Pour pousser la checkbox à droite du texte
-        layout.addLayout(auto_select_layout)
-
-        # Option Hipster Pipe
-        hipster_layout = QHBoxLayout()
-        hipster_label = QLabel("Hipster Pipe (celebration animation on success):")
-        self.hipster_checkbox = QCheckBox()
-        self.hipster_checkbox.setChecked(self.hipster_pipe_enabled)
-        hipster_layout.addWidget(hipster_label)
-        hipster_layout.addWidget(self.hipster_checkbox)
-        hipster_layout.addStretch()
-        layout.addLayout(hipster_layout)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-
+        dialog = ConfigDialog(self, self.config, self.config_file)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            url = self.url_edit.text().strip()
-            token = self.token_edit.text().strip()
-            # Get selected projects
-            selected_projects = []
-            for i in range(self.projects_list.count()):
-                item = self.projects_list.item(i)
-                if item.checkState() == Qt.CheckState.Checked:
-                    selected_projects.append(item.data(Qt.ItemDataRole.UserRole))
-
-            self.auto_select_updated = self.auto_select_checkbox.isChecked()
-            self.hipster_pipe_enabled = self.hipster_checkbox.isChecked()
+            url = dialog.get_url()
+            token = dialog.get_token()
+            selected_projects = dialog.get_selected_projects()
+            self.auto_select_updated = dialog.get_auto_select_updated()
+            self.hipster_pipe_enabled = dialog.get_hipster_pipe_enabled()
 
             try:
                 self.save_config(url, token, selected_projects)
@@ -980,171 +459,14 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.log_view.setPlainText(f"Erreur de configuration : {str(e)}")
 
+    # Old config dialog removed - now using ConfigDialog from gui.dialogs
+
     def show_about(self):
         """Affiche la fenêtre À propos"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("À propos de Mr. Pipe")
-        dialog.setFixedSize(600, 400)  # Taille fixe pour la fenêtre
-        layout = QHBoxLayout(dialog)
-
-        # Partie gauche : informations texte
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setSpacing(10)
-
-        # Auteur
-        author_label = QLabel("Auteur:")
-        author_label.setStyleSheet("font-weight: bold; color: white;")
-        author_value = QLabel("Jérémy Couderc Guillaume")
-        author_value.setStyleSheet("color: white;")
-        left_layout.addWidget(author_label)
-        left_layout.addWidget(author_value)
-
-        # Email
-        email_label = QLabel("Email:")
-        email_label.setStyleSheet("font-weight: bold; color: white;")
-        email_value = QLabel("jeremy.guillau@gmail.com")
-        email_value.setStyleSheet("color: white;")
-        left_layout.addWidget(email_label)
-        left_layout.addWidget(email_value)
-
-        # Licence (cliquable)
-        license_label = QLabel("Licence:")
-        license_label.setStyleSheet("font-weight: bold; color: white;")
-        license_value = QLabel('<a href="#" style="color: #4a90d9;">MIT</a>')
-        license_value.setStyleSheet("color: #4a90d9;")
-        license_value.setOpenExternalLinks(False)
-        license_value.linkActivated.connect(self.show_license)
-        left_layout.addWidget(license_label)
-        left_layout.addWidget(license_value)
-
-        # Version
-        version_label = QLabel("Version:")
-        version_label.setStyleSheet("font-weight: bold; color: white;")
-        version_value = QLabel("v1.0.1")
-        version_value.setStyleSheet("color: white;")
-        left_layout.addWidget(version_label)
-        left_layout.addWidget(version_value)
-
-        # Espacement
-        left_layout.addStretch()
-
-        # Partie droite : image du splash screen
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-
-        # Charger l'image du splash screen
-        splash_pixmap = QPixmap(self.get_resource_path("image.png"))
-        splash_label = QLabel()
-        splash_label.setPixmap(splash_pixmap.scaled(252, 252, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        splash_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(splash_label)
-
-        # Ajouter les widgets au layout principal
-        layout.addWidget(left_widget)
-        layout.addWidget(right_widget)
-
-        # Appliquer le style sombre
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #2b2b2b;
-                color: white;
-            }
-        """)
-
+        dialog = AboutDialog(self, self.get_resource_path)
         dialog.exec()
 
-    def show_license(self):
-        """Affiche la licence MIT dans une nouvelle fenêtre"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Licence MIT")
-        dialog.setFixedSize(500, 400)
-        layout = QVBoxLayout(dialog)
-
-        license_text = QTextEdit()
-        license_text.setPlainText("""MIT License
-
-Copyright (c) 2024 Jérémy Couderc Guillaume
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.""")
-        license_text.setReadOnly(True)
-        license_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: white;
-                font-family: monospace;
-                font-size: 10pt;
-            }
-        """)
-        layout.addWidget(license_text)
-
-        dialog.exec()
-
-    def _sync_projects(self, dialog):
-        if self.sync_worker and self.sync_worker.isRunning():
-            return  # Already syncing
-        token = self.token_edit.text().strip()
-        url = self.url_edit.text().strip()
-        if not token:
-            QMessageBox.warning(self, "Warning", "Enter token first")
-            return
-        # Update UI
-        self.sync_button.setText("Syncing...")
-        self.sync_button.setEnabled(False)
-        # Use worker for sync
-        saved_projects = set(int(p.strip()) for p in self.config.get('GitLab', 'projects', fallback='').split(',') if p.strip())
-        self.sync_worker = ProjectSyncWorker(url, token)
-        print("Starting sync worker")
-        self.sync_worker.sync_done.connect(lambda projects: self._on_sync_done(projects, saved_projects))
-        self.sync_worker.sync_error.connect(lambda error: self._on_sync_error(error))
-        self.sync_worker.start()
-
-    def _on_sync_done(self, projects, saved_projects):
-        print(f"Sync done, got {len(projects)} projects")
-        # Cache the projects
-        if not self.config.has_section('GitLab'):
-            self.config.add_section('GitLab')
-        self.config['GitLab']['available_projects'] = json.dumps([{'name': p.name, 'id': p.id} for p in projects])
-        with open(self.config_file, 'w') as f:
-            self.config.write(f)
-        self.projects_list.clear()
-        for proj in projects:
-            item = QListWidgetItem(f"{proj.name} (ID: {proj.id})")
-            item.setData(Qt.ItemDataRole.UserRole, proj.id)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            if proj.id in saved_projects:
-                item.setCheckState(Qt.CheckState.Checked)
-            else:
-                item.setCheckState(Qt.CheckState.Unchecked)
-            self.projects_list.addItem(item)
-        self.sync_worker = None
-        # Restore UI
-        self.sync_button.setText("Sync Projects")
-        self.sync_button.setEnabled(True)
-
-    def _on_sync_error(self, error):
-        print(f"Sync error: {error}")
-        QMessageBox.warning(self, "Sync Error", f"Failed to sync projects: {error}")
-        self.sync_worker = None
-        # Restore UI
-        self.sync_button.setText("Sync Projects")
-        self.sync_button.setEnabled(True)
+    # Sync methods removed - now handled in ConfigDialog
 
     def _on_launch_done(self):
         """Called when a manual job launch succeeds"""
@@ -1177,21 +499,7 @@ SOFTWARE.""")
         if key in self.job_status_workers:
             del self.job_status_workers[key]
 
-    def _filter_projects(self, text):
-        text = text.lower()
-        for i in range(self.projects_list.count()):
-            item = self.projects_list.item(i)
-            visible = text in item.text().lower()
-            item.setHidden(not visible)
-
-    def _limit_selection(self, item):
-        checked_count = 0
-        for i in range(self.projects_list.count()):
-            if self.projects_list.item(i).checkState() == Qt.CheckState.Checked:
-                checked_count += 1
-        if checked_count > 10:
-            item.setCheckState(Qt.CheckState.Unchecked)
-            QMessageBox.information(self, "Limit", "Maximum 10 projects can be selected")
+    # Filter and limit methods removed - now handled in ConfigDialog
 
     def update_projects(self, force_update=False):
         if not self.gitlab_manager:
@@ -1769,118 +1077,13 @@ SOFTWARE.""")
 
     def _clean_ansi_codes(self, text):
         """Nettoie le texte des séquences de contrôle inutiles tout en préservant les couleurs"""
-        import re
-
-        # Liste des séquences de contrôle à supprimer (sauf les couleurs qui se terminent par 'm')
-        control_sequences = [
-            r'\x1b\[\d*[JK]',  # Effacement d'écran et de lignes
-            r'\x1b\[\d*;*\d*[Hf]',  # Positionnement du curseur
-            r'\x1b\[\d*[ABCD]',  # Déplacements du curseur
-            r'\x1b\[\?\d*[hl]',  # Paramètres d'affichage
-            r'\x1b\[\d*[ST]',  # Défilement et tabulation
-            r'\x1b\[\?1[hl]',  # Mode curseur
-            r'\x1b\[\?25[hl]',  # Curseur visible/invisible
-            r'\x1b\[2J',  # Effacer l'écran
-            r'\x1b\[K',  # Effacer jusqu'à la fin de la ligne
-            r'\x1b\[\?7[hl]',  # Mode retour à la ligne automatique
-            r'\x1b\[\?1h\=7h',  # Mode VT100
-            r'\x1b\[\?1l\>',  # Désactiver le mode VT100
-            r'\x1b\[\?\d*[hl]',  # Codes de configuration d'écran
-            # Ne pas inclure les codes de couleur qui se terminent par 'm'
-        ]
-
-        # Supprimer les séquences de contrôle une par une
-        for pattern in control_sequences:
-            text = re.sub(pattern, '', text)
-
-        # Nettoyer les séquences de contrôle orphelines qui ne sont pas des codes de couleur
-        text = re.sub(r'\x1b\[(?![\d;]*m)[^a-zA-Z]', '', text)
-
-        # Supprimer les séquences de contrôle résiduelles qui ne sont pas des codes de couleur
-        text = re.sub(r'\x1b\[(?![\d;]*m)[\d;]*[a-zA-Z]', '', text)
-
-        return text
+        return LogFormatter.clean_ansi_codes(text)
 
     def _process_ansi_codes(self, text, cursor):
         """Traite les codes ANSI et les convertit en format de texte Qt"""
-        import re
-
-        # Ne pas nettoyer le texte ici pour conserver les codes couleur
-
-        # Expression régulière pour les codes ANSI
-        ansi_escape = re.compile(r'(\x1b\[[0-9;]*m)')
-
-        # Définition des styles ANSI
-        ansi_styles = {
-            '0': lambda f: f,  # Reset
-            '1': lambda f: f.setFontWeight(75),  # Bold
-            '3': lambda f: f.setFontItalic(True),  # Italic
-            '4': lambda f: f.setFontUnderline(True),  # Underline
-            '30': lambda f: f.setForeground(QColor('black')),  # Black
-            '31': lambda f: f.setForeground(QColor(255, 85, 85)),  # Red (plus visible sur fond sombre)
-            '32': lambda f: f.setForeground(QColor(85, 255, 85)),  # Green
-            '33': lambda f: f.setForeground(QColor(255, 255, 85)),  # Yellow
-            '34': lambda f: f.setForeground(QColor(85, 85, 255)),  # Blue
-            '35': lambda f: f.setForeground(QColor(255, 85, 255)),  # Magenta
-            '36': lambda f: f.setForeground(QColor(85, 255, 255)),  # Cyan
-            '37': lambda f: f.setForeground(QColor('white')),  # White
-            '90': lambda f: f.setForeground(QColor(127, 127, 127)),  # Bright Black (gray)
-            '91': lambda f: f.setForeground(QColor(255, 85, 85)),  # Bright Red
-            '92': lambda f: f.setForeground(QColor(85, 255, 85)),  # Bright Green
-            '93': lambda f: f.setForeground(QColor(255, 255, 85)),  # Bright Yellow
-            '94': lambda f: f.setForeground(QColor(85, 85, 255)),  # Bright Blue
-            '95': lambda f: f.setForeground(QColor(255, 85, 255)),  # Bright Magenta
-            '96': lambda f: f.setForeground(QColor(85, 255, 255)),  # Bright Cyan
-            '97': lambda f: f.setForeground(QColor('white')),  # Bright White
-            '40': lambda f: f.setBackground(QColor('black')),  # Background black
-            '41': lambda f: f.setBackground(QColor('darkRed')),  # Background red
-            '42': lambda f: f.setBackground(QColor('darkGreen')),  # Background green
-            '43': lambda f: f.setBackground(QColor('darkYellow')),  # Background yellow
-            '44': lambda f: f.setBackground(QColor('darkBlue')),  # Background blue
-            '45': lambda f: f.setBackground(QColor('darkMagenta')),  # Background magenta
-            '46': lambda f: f.setBackground(QColor('darkCyan')),  # Background cyan
-            '47': lambda f: f.setBackground(QColor('lightGray')),  # Background white
-        }
-
-        # Récupérer la taille de police actuelle du widget
         current_font = self.log_view.font()
         font_size = current_font.pointSize()
-
-        # Format de texte par défaut avec la police actuelle
-        default_format = QTextCharFormat()
-        default_format.setForeground(QColor('white'))
-        default_format.setFontPointSize(font_size)
-        current_format = QTextCharFormat(default_format)
-
-        # Diviser le texte en segments en utilisant les codes ANSI comme séparateurs
-        segments = ansi_escape.split(text)
-
-        for segment in segments:
-            if not segment:
-                continue
-
-            # Vérifier si c'est un code ANSI
-            if segment.startswith('\x1b[') and segment.endswith('m'):
-                codes = segment[2:-1].split(';')  # Enlever '\x1b[' et 'm', puis séparer par ';'
-
-                for code in codes:
-                    if not code:  # Code vide signifie réinitialisation
-                        current_format = QTextCharFormat(default_format)
-                    elif code in ansi_styles:
-                        ansi_styles[code](current_format)
-                    # Gestion des codes 256 couleurs (simplifiée)
-                    elif code.startswith('38;5;') and len(code.split(';')) == 3:
-                        # Code de couleur 256 (simplifié)
-                        pass  # On ignore pour l'instant
-                    else:
-                        # Code inconnu, on réinitialise
-                        current_format = QTextCharFormat(default_format)
-
-                # Appliquer le format mis à jour
-                cursor.setCharFormat(current_format)
-            else:
-                # C'est du texte à afficher
-                cursor.insertText(segment, current_format)
+        LogFormatter.process_ansi_codes(text, cursor, font_size)
 
     def show_error(self, error_message):
         self.log_view.setPlainText(error_message)
@@ -1906,8 +1109,7 @@ SOFTWARE.""")
             self.log_worker.stop()
             # self.log_worker.wait()  # Retiré pour éviter le blocage
 
-        if self.sync_worker:
-            self.sync_worker.stop()
+        # sync_worker is now handled in ConfigDialog
 
         if self.launch_worker:
             self.launch_worker.stop()
