@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QDialog, QLabel,
-    QLineEdit, QDialogButtonBox, QCheckBox, QPushButton, QMessageBox, QListWidget, QListWidgetItem, QStackedWidget, QSizePolicy
+    QLineEdit, QDialogButtonBox, QCheckBox, QPushButton, QMessageBox, QListWidget, QListWidgetItem, QStackedWidget, QSizePolicy, QSplitter
 )
 from PyQt6.QtGui import QAction, QTextCharFormat, QColor, QTextCursor, QFont, QFontDatabase
 from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal, QStandardPaths, QEventLoop
@@ -328,14 +328,19 @@ class MainWindow(QMainWindow):
         # Widget central et layout principal
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
+
+        # Créer un splitter horizontal pour permettre le redimensionnement
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout = QVBoxLayout(central)
+        layout.addWidget(self.splitter)
 
         # Définir la taille initiale de la fenêtre (largeur, hauteur)
         self.resize(2000, 1200)  # Taille augmentée pour une meilleure visibilité
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("Projects and Jobs")
         self.tree.itemClicked.connect(self.on_item_clicked)
-        layout.addWidget(self.tree)
+        self.tree.setMinimumWidth(200)  # Largeur minimale pour éviter que ce soit trop petit
+        self.splitter.addWidget(self.tree)
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
 
@@ -356,9 +361,20 @@ class MainWindow(QMainWindow):
         self.right_stack.addWidget(self.log_view)  # index 0
         self.right_stack.addWidget(launch_widget)  # index 1
         self.right_stack.setCurrentIndex(0)  # default to log_view
+        self.right_stack.setMinimumWidth(400)  # Largeur minimale pour le panneau de droite
 
-        layout.addWidget(self.tree)
-        layout.addWidget(self.right_stack)
+        self.splitter.addWidget(self.right_stack)
+
+        # Définir les proportions par défaut du splitter (1/3 pour l'arbre, 2/3 pour les logs)
+        self.splitter.setSizes([666, 1334])  # 2000 / 3 = 666.67, arrondi à 666 et 1334
+
+        # Connecter le signal pour sauvegarder automatiquement quand on redimensionne
+        self.splitter.splitterMoved.connect(self._auto_save_geometry)
+
+        # Connecter les signaux de redimensionnement de la fenêtre
+        self.resizeEvent = self._on_resize_event
+        self.moveEvent = self._on_move_event
+
         # Menu for settings
         menubar = self.menuBar()
         settings_menu = menubar.addMenu("Settings")
@@ -547,6 +563,19 @@ class MainWindow(QMainWindow):
             color: #ffffff;
         }
 
+        /* Splitter */
+        QSplitter::handle {
+            background-color: #555555;
+        }
+
+        QSplitter::handle:horizontal {
+            width: 2px;
+        }
+
+        QSplitter::handle:hover {
+            background-color: #666666;
+        }
+
         /* Text edit is handled separately in the code */
         """
         self.setStyleSheet(dark_stylesheet)
@@ -620,6 +649,22 @@ class MainWindow(QMainWindow):
             # Charger l'option UI
             if 'UI' in self.config:
                 self.auto_select_updated = self.config.getboolean('UI', 'auto_select_updated', fallback=True)
+
+                # Restaurer les proportions du splitter après un court délai pour s'assurer que l'UI est prête
+                splitter_sizes = self.config.get('UI', 'splitter_sizes', fallback=None)
+                QTimer.singleShot(100, lambda: self._restore_splitter_sizes(splitter_sizes))
+
+                # Restaurer la géométrie de la fenêtre
+                geometry_b64 = self.config.get('UI', 'window_geometry', fallback=None)
+                if geometry_b64:
+                    try:
+                        import base64
+                        geometry_data = base64.b64decode(geometry_b64)
+                        from PyQt6.QtCore import QByteArray
+                        geometry = QByteArray(geometry_data)
+                        self.restoreGeometry(geometry)
+                    except Exception as e:
+                        print(f"Erreur lors de la restauration de la géométrie: {e}")
         else:
             self.log_view.setPlainText("Bienvenue ! Veuillez configurer l'application dans le menu Paramètres.")
 
@@ -636,8 +681,95 @@ class MainWindow(QMainWindow):
             self.config.add_section('UI')
         self.config.set('UI', 'auto_select_updated', str(self.auto_select_updated))
 
+        # Sauvegarder les proportions du splitter
+        splitter_sizes = self.splitter.sizes()
+        if splitter_sizes:
+            self.config.set('UI', 'splitter_sizes', ','.join(str(size) for size in splitter_sizes))
+
+        # Sauvegarder la géométrie de la fenêtre
+        geometry = self.saveGeometry()
+        if geometry:
+            import base64
+            geometry_b64 = base64.b64encode(geometry.data()).decode('ascii')
+            self.config.set('UI', 'window_geometry', geometry_b64)
+
         with open(self.config_file, 'w') as f:
             self.config.write(f)
+
+    def _restore_splitter_sizes(self, splitter_sizes_str):
+        """Restaure les proportions du splitter depuis la configuration"""
+        if splitter_sizes_str:
+            try:
+                sizes = [int(s.strip()) for s in splitter_sizes_str.split(',')]
+                if len(sizes) >= 2:
+                    # S'assurer que les tailles respectent les minimums
+                    if sizes[0] < 200:
+                        sizes[0] = 200
+                    if sizes[1] < 400:
+                        sizes[1] = 400
+                    self.splitter.setSizes(sizes)
+            except (ValueError, IndexError) as e:
+                print(f"Erreur lors de la restauration des proportions du splitter: {e}")
+                # Utiliser les proportions par défaut
+                pass
+
+    def _auto_save_geometry(self):
+        """Sauvegarde automatique de la géométrie et des proportions du splitter"""
+        try:
+            # Créer la section UI si elle n'existe pas
+            if not self.config.has_section('UI'):
+                self.config.add_section('UI')
+
+            # Sauvegarder les proportions du splitter
+            splitter_sizes = self.splitter.sizes()
+            if splitter_sizes:
+                self.config.set('UI', 'splitter_sizes', ','.join(str(size) for size in splitter_sizes))
+
+            # Sauvegarder la géométrie de la fenêtre
+            geometry = self.saveGeometry()
+            if geometry:
+                import base64
+                geometry_b64 = base64.b64encode(geometry.data()).decode('ascii')
+                self.config.set('UI', 'window_geometry', geometry_b64)
+
+            # Écrire dans le fichier
+            with open(self.config_file, 'w') as f:
+                self.config.write(f)
+
+        except Exception as e:
+            print(f"Erreur lors de la sauvegarde automatique: {e}")
+
+    def _on_resize_event(self, event):
+        """Appelé quand la fenêtre est redimensionnée"""
+        # Délai pour éviter trop de sauvegardes pendant le redimensionnement
+        if hasattr(self, '_resize_timer') and self._resize_timer.isActive():
+            self._resize_timer.stop()
+
+        if not hasattr(self, '_resize_timer'):
+            self._resize_timer = QTimer(self)
+            self._resize_timer.setSingleShot(True)
+            self._resize_timer.timeout.connect(self._auto_save_geometry)
+
+        self._resize_timer.start(500)  # Sauvegarder 500ms après le dernier redimensionnement
+
+        # Appeler la méthode parente
+        super().resizeEvent(event)
+
+    def _on_move_event(self, event):
+        """Appelé quand la fenêtre est déplacée"""
+        # Délai pour éviter trop de sauvegardes pendant le déplacement
+        if hasattr(self, '_move_timer') and self._move_timer.isActive():
+            self._move_timer.stop()
+
+        if not hasattr(self, '_move_timer'):
+            self._move_timer = QTimer(self)
+            self._move_timer.setSingleShot(True)
+            self._move_timer.timeout.connect(self._auto_save_geometry)
+
+        self._move_timer.start(500)  # Sauvegarder 500ms après le dernier déplacement
+
+        # Appeler la méthode parente
+        super().moveEvent(event)
 
     def show_config(self):
         dialog = QDialog(self)
@@ -1534,6 +1666,9 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(8000, self.update_projects)
 
     def closeEvent(self, event):
+        # Sauvegarder automatiquement la géométrie et les proportions avant de fermer
+        self._auto_save_geometry()
+
         # Arrêter tous les workers en cours d'exécution
         if self.log_worker:
             self.log_worker.stop()
@@ -1553,6 +1688,12 @@ class MainWindow(QMainWindow):
             self.timer.stop()
         if hasattr(self, 'loading_timer') and self.loading_timer:
             self.loading_timer.stop()
+
+        # Arrêter les timers de sauvegarde automatique
+        if hasattr(self, '_resize_timer') and self._resize_timer:
+            self._resize_timer.stop()
+        if hasattr(self, '_move_timer') and self._move_timer:
+            self._move_timer.stop()
 
         for worker in self.project_workers.values():
             if worker and worker.isRunning():
