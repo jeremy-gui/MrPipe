@@ -366,6 +366,191 @@ class MainWindow(QMainWindow):
         config_action.triggered.connect(self.show_config)
         settings_menu.addAction(config_action)
 
+        # Apply dark mode stylesheet
+        self._apply_dark_mode_stylesheet()
+
+    def _apply_dark_mode_stylesheet(self):
+        """Apply comprehensive dark mode stylesheet to all widgets"""
+        dark_stylesheet = """
+        /* Main window background */
+        QMainWindow {
+            background-color: #2b2b2b;
+            color: #ffffff;
+        }
+
+        /* Tree widget */
+        QTreeWidget {
+            background-color: #2b2b2b;
+            color: #ffffff;
+            border: 1px solid #555555;
+            alternate-background-color: #333333;
+        }
+
+        QTreeWidget::item {
+            background-color: transparent;
+            border-bottom: 1px solid #444444;
+            padding: 2px;
+        }
+
+        QTreeWidget::item:selected {
+            background-color: #4a90d9;
+            color: white;
+        }
+
+        QTreeWidget::item:hover {
+            background-color: #404040;
+        }
+
+        /* Headers */
+        QHeaderView::section {
+            background-color: #404040;
+            color: #ffffff;
+            border: 1px solid #555555;
+            padding: 4px;
+        }
+
+        /* Buttons */
+        QPushButton {
+            background-color: #404040;
+            color: #ffffff;
+            border: 1px solid #555555;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+
+        QPushButton:hover {
+            background-color: #555555;
+        }
+
+        QPushButton:pressed {
+            background-color: #666666;
+        }
+
+        QPushButton:disabled {
+            background-color: #333333;
+            color: #888888;
+        }
+
+        /* Line edits */
+        QLineEdit {
+            background-color: #404040;
+            color: #ffffff;
+            border: 1px solid #555555;
+            border-radius: 4px;
+            padding: 6px;
+            selection-background-color: #4a90d9;
+        }
+
+        QLineEdit:focus {
+            border-color: #4a90d9;
+        }
+
+        /* Labels */
+        QLabel {
+            color: #ffffff;
+        }
+
+        /* Dialogs */
+        QDialog {
+            background-color: #2b2b2b;
+            color: #ffffff;
+        }
+
+        /* List widgets */
+        QListWidget {
+            background-color: #2b2b2b;
+            color: #ffffff;
+            border: 1px solid #555555;
+            alternate-background-color: #333333;
+        }
+
+        QListWidget::item {
+            background-color: transparent;
+            color: #ffffff;
+            border-bottom: 1px solid #444444;
+            padding: 4px;
+        }
+
+        QListWidget::item:selected {
+            background-color: #4a90d9;
+            color: white;
+        }
+
+        QListWidget::item:hover {
+            background-color: #404040;
+        }
+
+        /* Checkboxes */
+        QCheckBox {
+            color: #ffffff;
+        }
+
+        QCheckBox::indicator {
+            background-color: #404040;
+            border: 1px solid #555555;
+            width: 16px;
+            height: 16px;
+        }
+
+        QCheckBox::indicator:checked {
+            background-color: #4a90d9;
+            border: 1px solid #4a90d9;
+        }
+
+        /* Dialog button box */
+        QDialogButtonBox {
+            button-layout: 0;
+        }
+
+        /* Menu bar */
+        QMenuBar {
+            background-color: #404040;
+            color: #ffffff;
+            border-bottom: 1px solid #555555;
+        }
+
+        QMenuBar::item {
+            background-color: transparent;
+            color: #ffffff;
+            padding: 4px 8px;
+        }
+
+        QMenuBar::item:selected {
+            background-color: #555555;
+        }
+
+        /* Menus */
+        QMenu {
+            background-color: #404040;
+            color: #ffffff;
+            border: 1px solid #555555;
+        }
+
+        QMenu::item {
+            background-color: transparent;
+            color: #ffffff;
+            padding: 4px 20px;
+        }
+
+        QMenu::item:selected {
+            background-color: #555555;
+        }
+
+        /* Message boxes */
+        QMessageBox {
+            background-color: #2b2b2b;
+            color: #ffffff;
+        }
+
+        QMessageBox QLabel {
+            color: #ffffff;
+        }
+
+        /* Text edit is handled separately in the code */
+        """
+        self.setStyleSheet(dark_stylesheet)
+
     def _animate_loading_dots(self):
         states = ["·", "··", "···"]
         self._loading_state = (self._loading_state + 1) % len(states)
@@ -769,6 +954,9 @@ class MainWindow(QMainWindow):
         font.setPointSize(12)  # Un peu plus gros
         proj_item.setFont(0, font)
 
+        # Couleur blanche pour les projets
+        proj_item.setForeground(0, QColor('white'))
+
         # Créer un ensemble des IDs de pipelines existants
         existing_pipeline_ids = set()
         for i in range(proj_item.childCount()):
@@ -809,6 +997,9 @@ class MainWindow(QMainWindow):
                             font.setPointSize(11)
                             child.setFont(0, font)
 
+                            # Couleur blanche pour les pipelines
+                            child.setForeground(0, QColor('white'))
+
                             # Si l'option est activée, sélectionner le premier job de la pipeline mise à jour
                             # if self.auto_select_updated and child.childCount() > 0:
                             #     first_job_item = child.child(0)
@@ -824,6 +1015,9 @@ class MainWindow(QMainWindow):
                 font.setBold(True)
                 font.setPointSize(11)
                 pipeline_item.setFont(0, font)
+
+                # Couleur blanche pour les pipelines
+                pipeline_item.setForeground(0, QColor('white'))
 
                 # Ajouter les jobs
                 for job in jobs:
