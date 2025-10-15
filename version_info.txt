@@ -32,12 +32,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'Mr. Pipe'),
             StringStruct('FileDescription', 'GitLab Pipelines Manager'),
-            StringStruct('FileVersion', '1.0.0'),
+            StringStruct('FileVersion', '1.0.2'),
             StringStruct('InternalName', 'Mr. Pipe'),
             StringStruct('LegalCopyright', 'Copyright © 2024 Mr. Pipe. All rights reserved.'),
             StringStruct('OriginalFilename', 'Mr. Pipe.exe'),
             StringStruct('ProductName', 'Mr. Pipe'),
-            StringStruct('ProductVersion', '1.0.0'),
+            StringStruct('ProductVersion', '1.0.2'),
           ]
         )
       ]

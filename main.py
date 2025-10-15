@@ -70,7 +70,7 @@ def main():
         # Délai minimum pour que le splash screen soit visible
         from PyQt6.QtCore import QTimer, QEventLoop
         loop = QEventLoop()
-        QTimer.singleShot(2000, loop.quit)  # Attendre 2 secondes
+        QTimer.singleShot(1500, loop.quit)  # Attendre 1,5 secondes
         loop.exec()
 
         splash.finish(window)

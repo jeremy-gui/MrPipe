@@ -14,6 +14,12 @@ import sys
 from gitlab_manager import GitLabManager
 from PyQt6 import sip
 
+from ui_setup import UiSetup
+from project_manager import ProjectManager
+from log_processor import LogProcessor
+from config_dialog import ConfigDialog
+from about_dialog import AboutDialog
+
 
 class HttpWorker(QThread):
     finished = pyqtSignal(object)
@@ -282,7 +288,18 @@ class MainWindow(QMainWindow):
         self._loading_state = 0  # For loading animation
         self._loading_text = "·"  # For loading animation
         self._loading_active = False  # For loading animation
-        self.setup_ui()
+        self._closing = False  # Flag to prevent new operations during shutdown
+
+        # Instantiate the extracted modules
+        self.ui_setup = UiSetup(self)
+        self.project_manager = ProjectManager(self)
+        self.log_processor = LogProcessor(None)  # Will set log_view later
+
+        self.ui_setup.setup_ui()
+        self.log_processor.log_view = self.log_view  # Set the log_view after UI setup
+        
+        # Set log_processor on project_manager
+        self.project_manager.set_log_processor(self.log_processor)
 
         # Configuration simple de la police
         try:
@@ -330,273 +347,6 @@ class MainWindow(QMainWindow):
 
         self.load_config()  # Doit être après setup_ui() pour pouvoir afficher les messages
         self.setup_timers()
-
-    def setup_ui(self):
-        """Configure l'interface utilisateur principale"""
-        # Widget central et layout principal
-        central = QWidget()
-        self.setCentralWidget(central)
-
-        # Créer un splitter horizontal pour permettre le redimensionnement
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        layout = QVBoxLayout(central)
-        layout.addWidget(self.splitter)
-
-        # Définir la taille initiale de la fenêtre (largeur, hauteur)
-        self.resize(2000, 1200)  # Taille augmentée pour une meilleure visibilité
-        self.tree = QTreeWidget()
-        self.tree.setHeaderLabel("Projects and Jobs")
-        self.tree.itemClicked.connect(self.on_item_clicked)
-        self.tree.setMinimumWidth(200)  # Largeur minimale pour éviter que ce soit trop petit
-        self.splitter.addWidget(self.tree)
-        self.log_view = QTextEdit()
-        self.log_view.setReadOnly(True)
-
-        # Launch widget for manual jobs
-        launch_widget = QWidget()
-        launch_layout = QVBoxLayout(launch_widget)
-        launch_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        launch_label = QLabel("This job is manual and not started.")
-        launch_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.launch_button = QPushButton("Launch Job")
-        self.launch_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.launch_button.clicked.connect(self._launch_manual_job)
-        launch_layout.addWidget(launch_label)
-        launch_layout.addWidget(self.launch_button)
-
-        # Stacked widget for right side
-        self.right_stack = QStackedWidget()
-        self.right_stack.addWidget(self.log_view)  # index 0
-        self.right_stack.addWidget(launch_widget)  # index 1
-        self.right_stack.setCurrentIndex(0)  # default to log_view
-        self.right_stack.setMinimumWidth(400)  # Largeur minimale pour le panneau de droite
-
-        self.splitter.addWidget(self.right_stack)
-
-        # Définir les proportions par défaut du splitter (1/3 pour l'arbre, 2/3 pour les logs)
-        self.splitter.setSizes([666, 1334])  # 2000 / 3 = 666.67, arrondi à 666 et 1334
-
-        # Connecter le signal pour sauvegarder automatiquement quand on redimensionne
-        self.splitter.splitterMoved.connect(self._auto_save_geometry)
-
-        # Connecter les signaux de redimensionnement de la fenêtre
-        self.resizeEvent = self._on_resize_event
-        self.moveEvent = self._on_move_event
-
-        # Menu for settings
-        menubar = self.menuBar()
-        settings_menu = menubar.addMenu("Settings")
-        config_action = QAction("Configure", self)
-        config_action.triggered.connect(self.show_config)
-        settings_menu.addAction(config_action)
-
-        # Quit action
-        quit_action = QAction("Quit", self)
-        quit_action.triggered.connect(self.close)
-        settings_menu.addAction(quit_action)
-
-        # About action
-        about_action = QAction("About", self)
-        about_action.triggered.connect(self.show_about)
-        settings_menu.addAction(about_action)
-
-        # Apply dark mode stylesheet
-        self._apply_dark_mode_stylesheet()
-
-    def _apply_dark_mode_stylesheet(self):
-        """Apply comprehensive dark mode stylesheet to all widgets"""
-        dark_stylesheet = """
-        /* Main window background */
-        QMainWindow {
-            background-color: #2b2b2b;
-            color: #ffffff;
-        }
-
-        /* Tree widget */
-        QTreeWidget {
-            background-color: #2b2b2b;
-            color: #ffffff;
-            border: 1px solid #555555;
-            alternate-background-color: #333333;
-        }
-
-        QTreeWidget::item {
-            background-color: transparent;
-            border-bottom: 1px solid #444444;
-            padding: 2px;
-        }
-
-        QTreeWidget::item:selected {
-            background-color: #4a90d9;
-            color: white;
-        }
-
-        QTreeWidget::item:hover {
-            background-color: #404040;
-        }
-
-        /* Headers */
-        QHeaderView::section {
-            background-color: #404040;
-            color: #ffffff;
-            border: 1px solid #555555;
-            padding: 4px;
-        }
-
-        /* Buttons */
-        QPushButton {
-            background-color: #404040;
-            color: #ffffff;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 12px;
-        }
-
-        QPushButton:hover {
-            background-color: #555555;
-        }
-
-        QPushButton:pressed {
-            background-color: #666666;
-        }
-
-        QPushButton:disabled {
-            background-color: #333333;
-            color: #888888;
-        }
-
-        /* Line edits */
-        QLineEdit {
-            background-color: #404040;
-            color: #ffffff;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 6px;
-            selection-background-color: #4a90d9;
-        }
-
-        QLineEdit:focus {
-            border-color: #4a90d9;
-        }
-
-        /* Labels */
-        QLabel {
-            color: #ffffff;
-        }
-
-        /* Dialogs */
-        QDialog {
-            background-color: #2b2b2b;
-            color: #ffffff;
-        }
-
-        /* List widgets */
-        QListWidget {
-            background-color: #2b2b2b;
-            color: #ffffff;
-            border: 1px solid #555555;
-            alternate-background-color: #333333;
-        }
-
-        QListWidget::item {
-            background-color: transparent;
-            color: #ffffff;
-            border-bottom: 1px solid #444444;
-            padding: 4px;
-        }
-
-        QListWidget::item:selected {
-            background-color: #4a90d9;
-            color: white;
-        }
-
-        QListWidget::item:hover {
-            background-color: #404040;
-        }
-
-        /* Checkboxes */
-        QCheckBox {
-            color: #ffffff;
-        }
-
-        QCheckBox::indicator {
-            background-color: #404040;
-            border: 1px solid #555555;
-            width: 16px;
-            height: 16px;
-        }
-
-        QCheckBox::indicator:checked {
-            background-color: #4a90d9;
-            border: 1px solid #4a90d9;
-        }
-
-        /* Dialog button box */
-        QDialogButtonBox {
-            button-layout: 0;
-        }
-
-        /* Menu bar */
-        QMenuBar {
-            background-color: #404040;
-            color: #ffffff;
-            border-bottom: 1px solid #555555;
-        }
-
-        QMenuBar::item {
-            background-color: transparent;
-            color: #ffffff;
-            padding: 4px 8px;
-        }
-
-        QMenuBar::item:selected {
-            background-color: #555555;
-        }
-
-        /* Menus */
-        QMenu {
-            background-color: #404040;
-            color: #ffffff;
-            border: 1px solid #555555;
-        }
-
-        QMenu::item {
-            background-color: transparent;
-            color: #ffffff;
-            padding: 4px 20px;
-        }
-
-        QMenu::item:selected {
-            background-color: #555555;
-        }
-
-        /* Message boxes */
-        QMessageBox {
-            background-color: #2b2b2b;
-            color: #ffffff;
-        }
-
-        QMessageBox QLabel {
-            color: #ffffff;
-        }
-
-        /* Splitter */
-        QSplitter::handle {
-            background-color: #555555;
-        }
-
-        QSplitter::handle:horizontal {
-            width: 2px;
-        }
-
-        QSplitter::handle:hover {
-            background-color: #666666;
-        }
-
-        /* Text edit is handled separately in the code */
-        """
-        self.setStyleSheet(dark_stylesheet)
 
     def _animate_loading_dots(self):
         states = ["·", "··", "···"]
@@ -673,7 +423,7 @@ class MainWindow(QMainWindow):
                         self.projects = [int(p.strip()) for p in projects.split(',') if p.strip()]
                         self.gitlab_manager = GitLabManager(url, token)
                         self.log_view.setPlainText("Chargement des projets...")
-                        self.update_projects()
+                        self.project_manager.update_projects()
                     except Exception as e:
                         self.log_view.setPlainText(f"Erreur lors du chargement de la configuration : {str(e)}")
                 else:
@@ -1021,7 +771,7 @@ class MainWindow(QMainWindow):
         # Version
         version_label = QLabel("Version:")
         version_label.setStyleSheet("font-weight: bold; color: white;")
-        version_value = QLabel("v1.0.1")
+        version_value = QLabel("v1.0.2")
         version_value.setStyleSheet("color: white;")
         left_layout.addWidget(version_label)
         left_layout.addWidget(version_value)
@@ -1155,7 +905,7 @@ SOFTWARE.""")
             self.launch_button.setText("Launch Job")
             self.launch_button.setEnabled(True)
         # Refresh projects to update status
-        self.update_projects(force_update=True)
+        self.project_manager.update_projects(force_update=True)
         # Switch back to log view and show message
         self.right_stack.setCurrentIndex(0)
         self.log_view.setPlainText("Job launched successfully. Refreshing...")
@@ -1483,7 +1233,7 @@ SOFTWARE.""")
 
         # Afficher un message de chargement
         self.log_view.setPlainText("Chargement des logs en cours...")
-        self._update_loading_display()
+        self.log_processor._update_loading_display()
 
         # Use worker to fetch job data
         self.job_data_worker = JobDataWorker(self.gitlab_manager, proj_id, job_id)
@@ -1499,7 +1249,7 @@ SOFTWARE.""")
             self.job_data_worker = None
 
         if job_data is None:
-            self.show_error("Impossible de récupérer les données du job")
+            self.log_processor.show_error("Impossible de récupérer les données du job")
             return
 
         proj_id, job_id = self.current_job
@@ -1511,21 +1261,21 @@ SOFTWARE.""")
             self.right_stack.setCurrentIndex(1)  # show launch widget
             return
 
-        self._loading_active = job_status not in ['success', 'failed', 'canceled', 'skipped']
+        self.log_processor._loading_active = job_status not in ['success', 'failed', 'canceled', 'skipped']
 
         print(f"Statut du job: {job_status}")
         print(f"Taille des logs: {len(log_content) if log_content else 0} caractères")
 
         if log_content:
-            self.update_log_display(log_content)
-            if self._loading_active:
+            self.log_processor.update_log_display(log_content)
+            if self.log_processor._loading_active:
                 self.loading_timer.start(500)
             # Si le job est en cours, démarrer le suivi en temps réel
-            if self._loading_active:
+            if self.log_processor._loading_active:
                 print("Démarrage du suivi en temps réel...")
                 self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
-                self.log_worker.log_ready.connect(self.update_log_display)
-                self.log_worker.error_occurred.connect(self.show_error)
+                self.log_worker.log_ready.connect(self.log_processor.update_log_display)
+                self.log_worker.error_occurred.connect(self.log_processor.show_error)
                 self.log_worker.job_finished.connect(self._on_job_finished)
                 self.log_worker.start()
             else:
@@ -1547,17 +1297,17 @@ SOFTWARE.""")
         else:
             # Si pas de logs initiaux, afficher un message selon le statut
             if job_status in ['success', 'failed', 'canceled', 'skipped']:
-                self.show_error("Aucun log disponible pour ce job terminé")
+                self.log_processor.show_error("Aucun log disponible pour ce job terminé")
             else:
                 self.log_view.setPlainText("Logs en cours de chargement...")
-                self._update_loading_display()
-                if self._loading_active:
+                self.log_processor._update_loading_display()
+                if self.log_processor._loading_active:
                     self.loading_timer.start(500)
                 # Démarrer le suivi en temps réel même sans logs initiaux
                 print("Démarrage du suivi en temps réel...")
                 self.log_worker = LogWorker(self.gitlab_manager, proj_id, job_id)
-                self.log_worker.log_ready.connect(self.update_log_display)
-                self.log_worker.error_occurred.connect(self.show_error)
+                self.log_worker.log_ready.connect(self.log_processor.update_log_display)
+                self.log_worker.error_occurred.connect(self.log_processor.show_error)
                 self.log_worker.job_finished.connect(self._on_job_finished)
                 self.log_worker.start()
 
@@ -1579,9 +1329,9 @@ SOFTWARE.""")
                 cursor.movePosition(QTextCursor.MoveOperation.End)
                 cursor.insertText('\n\n' + '='*80 + '\n')
                 cursor.insertText(message + '\n')
-                self._loading_active = False
+                self.log_processor._loading_active = False
                 self.loading_timer.stop()
-                self._update_loading_display()
+                self.log_processor._update_loading_display()
                 # Arrêter le worker car le job est terminé
                 self.log_worker.stop()
                 self.log_worker.wait()
@@ -1887,15 +1637,15 @@ SOFTWARE.""")
 
     def setup_timers(self):
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_projects)
+        self.timer.timeout.connect(self.project_manager.update_projects)
         # Commencer avec un intervalle plus long après le chargement initial
         QTimer.singleShot(10000, lambda: self.timer.start(3000))  # Attendre 10s puis mettre à jour toutes les 2s
 
         self.loading_timer = QTimer(self)
-        self.loading_timer.timeout.connect(self._animate_loading_dots)
+        self.loading_timer.timeout.connect(self.log_processor._animate_loading_dots)
 
         # Planifier une première mise à jour différée pour laisser le temps à l'interface de se charger
-        QTimer.singleShot(8000, self.update_projects)
+        QTimer.singleShot(8000, self.project_manager.update_projects)
 
     def closeEvent(self, event):
         # Sauvegarder automatiquement la géométrie et les proportions avant de fermer
