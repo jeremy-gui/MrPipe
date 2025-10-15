@@ -8,6 +8,22 @@ A desktop application to manage GitLab pipelines for multiple projects.
 - Display all jobs of the pipeline with their status, updated in real-time.
 - View logs of selected jobs on the right panel, updated in real-time.
 - Manual job launching with visual feedback.
+- **Hipster Pipe**: Celebration animation when pipelines succeed (optional feature).
+
+## Hipster Pipe Feature
+
+Mr. Pipe includes a special "Hipster Pipe" feature that plays a celebration video when a pipeline job changes from "running" to "success":
+
+### Setup
+1. Place an `animation.mp4` file in the same directory as the application
+2. Go to Settings > Configure
+3. Check the "Hipster Pipe (celebration animation on success)" option
+4. The animation will automatically play when pipelines succeed
+
+### For Packaged Applications
+The video file is automatically included when building the application with the provided build scripts.
+
+**Note**: If `animation.mp4` is not present, the feature will be silently disabled.
 
 ## Requirements
 

@@ -14,8 +14,10 @@ a = Analysis(
     pathex=[current_dir],
     binaries=[],
     datas=[
-        ('logo.png', '.'),  # Include logo in the bundle
+        ('image.png', '.'),  # Include logo in the bundle
         ('logo.icns', '.'),  # Include icns icon
+        ('logo.ico', '.'),  # Include icns icon
+        ('animation.mp4', '.'),  # Include Hipster Pipe animation video
     ],
     hiddenimports=[
         'PyQt6',
@@ -24,6 +26,8 @@ a = Analysis(
         'PyQt6.QtWidgets',
         'PyQt6.QtNetwork',
         'PyQt6.QtDBus',
+        'PyQt6.QtMultimedia',
+        'PyQt6.QtMultimediaWidgets',
         'PyQt6.sip',
         'gitlab',
         'gitlab.v4',

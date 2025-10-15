@@ -3,30 +3,33 @@ from PyQt6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QTextEdit, QDialog, QLabel,
     QLineEdit, QDialogButtonBox, QCheckBox, QPushButton, QMessageBox, QListWidget, QListWidgetItem, QStackedWidget, QSizePolicy, QSplitter
 )
-from PyQt6.QtGui import QAction, QTextCharFormat, QColor, QTextCursor, QFont, QFontDatabase
-from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal, QStandardPaths, QEventLoop
+from PyQt6.QtGui import QAction, QTextCharFormat, QColor, QTextCursor, QFont, QFontDatabase, QIcon
+from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal, QStandardPaths, QEventLoop, QUrl
+from PyQt6.QtMultimedia import QMediaPlayer
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 import os, time
 import configparser
 import json
+import sys
 from gitlab_manager import GitLabManager
 from PyQt6 import sip
 
+
 class HttpWorker(QThread):
-    """Worker générique pour les appels HTTP"""
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
-    
+
     def __init__(self, func, *args, **kwargs):
         super().__init__()
         self.func = func
         self.args = args
         self.kwargs = kwargs
         self._is_running = True
-    
+
     def run(self):
         if not self._is_running:
             return
-            
+
         try:
             result = self.func(*self.args, **self.kwargs)
             if self._is_running:
@@ -34,7 +37,7 @@ class HttpWorker(QThread):
         except Exception as e:
             if self._is_running:
                 self.error.emit(f"Erreur: {str(e)}")
-    
+
     def stop(self):
         self._is_running = False
 
@@ -43,13 +46,13 @@ class ProjectSyncWorker(QThread):
     """Worker for synchronizing project list"""
     sync_done = pyqtSignal(list)
     sync_error = pyqtSignal(str)
-    
+
     def __init__(self, url, token):
         super().__init__()
         self.url = url
         self.token = token
         self._is_running = True
-    
+
     def run(self):
         if not self._is_running:
             return
@@ -64,7 +67,7 @@ class ProjectSyncWorker(QThread):
             print(f"Sync error: {e}")
             if self._is_running:
                 self.sync_error.emit(str(e))
-    
+
     def stop(self):
         self._is_running = False
 
@@ -103,7 +106,7 @@ class LogWorker(QThread):
     log_ready = pyqtSignal(str)
     job_finished = pyqtSignal()
     error_occurred = pyqtSignal(str)  # Signal pour les erreurs
-    
+
     def __init__(self, gitlab_manager, project_id, job_id):
         super().__init__()
         self.gitlab_manager = gitlab_manager
@@ -112,21 +115,21 @@ class LogWorker(QThread):
         self._is_running = True
         self._job_status = None
         self.logs_loaded = False
-    
+
     def run(self):
         # Variable pour suivre si on a déjà chargé les logs
         logs_loaded = False
-        
+
         while self._is_running:
             if not self._is_running:
                 return
-            
+
             # Vérifier l'état actuel du job
             status = self._get_job_status(self.project_id, self.job_id)
             if status is None:
                 self._is_running = False
                 return
-            
+
             # Charger les logs au moins une fois, même si le job est terminé
             if not logs_loaded or self._job_status not in ['success', 'failed', 'canceled', 'skipped']:
                 try:
@@ -136,23 +139,23 @@ class LogWorker(QThread):
                 except Exception as e:
                     self.error_occurred.emit(str(e))
                     logs_loaded = True  # Pour éviter de retry en boucle
-            
+
             # Si le job est terminé, on arrête la boucle
             if self._job_status in ['success', 'failed', 'canceled', 'skipped']:
                 self.job_finished.emit()
                 self._is_running = False
                 break
-                
+
             # Attendre avant la prochaine itération
             self.msleep(1000)  # Vérifier toutes les 1 seconde pour les logs
-    
+
     def _on_log_received(self, log):
         if self._is_running:
             self.log_ready.emit(log)
-    
+
     def stop(self):
         self._is_running = False
-    
+
     def _get_job_status(self, project_id, job_id):
         """Récupère le statut d'un job spécifique"""
         try:
@@ -164,7 +167,7 @@ class LogWorker(QThread):
             print(f"Erreur lors de la récupération du statut du job: {e}")
             # Ne pas émettre ici, géré dans run()
             return None
-    
+
     def get_job_status(self):
         return self._job_status
 
@@ -173,7 +176,7 @@ class JobStatusWorker(QThread):
     """Worker pour surveiller le statut d'un job spécifique"""
     status_updated = pyqtSignal(str)
     finished_signal = pyqtSignal(tuple)  # Emit the key when finished
-    
+
     def __init__(self, gitlab_manager, proj_id, job_id, job_item, key):
         super().__init__()
         self.gitlab_manager = gitlab_manager
@@ -182,7 +185,7 @@ class JobStatusWorker(QThread):
         self.job_item = job_item  # Référence à l'item QTreeWidgetItem pour mise à jour
         self.key = key
         self._is_running = True
-    
+
     def run(self):
         while self._is_running:
             try:
@@ -190,7 +193,7 @@ class JobStatusWorker(QThread):
                 job = project.jobs.get(self.job_id)
                 status = job.status
                 self.status_updated.emit(status)
-                
+
                 # Si le job est terminé, arrêter le worker
                 if status in ['success', 'failed', 'canceled', 'skipped']:
                     self._is_running = False
@@ -201,9 +204,9 @@ class JobStatusWorker(QThread):
                 self._is_running = False
                 self.finished_signal.emit(self.key)
                 break
-            
+
             self.msleep(2000)  # Vérifier toutes les 2 secondes
-    
+
     def stop(self):
         self._is_running = False
 
@@ -211,14 +214,14 @@ class JobStatusWorker(QThread):
 class JobDataWorker(QThread):
     """Worker for fetching job data (status and logs)"""
     data_ready = pyqtSignal(dict)
-    
+
     def __init__(self, gitlab_manager, proj_id, job_id):
         super().__init__()
         self.gitlab_manager = gitlab_manager
         self.proj_id = proj_id
         self.job_id = job_id
         self._is_running = True
-    
+
     def run(self):
         if not self._is_running:
             return
@@ -241,7 +244,7 @@ class JobDataWorker(QThread):
             print(f"Erreur lors de la récupération des données du job: {e}")
             if self._is_running:
                 self.data_ready.emit(None)
-    
+
     def stop(self):
         self._is_running = False
 
@@ -250,6 +253,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Mr. Pipe")
+        # Définir l'icône de l'application
+        self.setWindowIcon(QIcon("logo.ico"))
         self.gitlab_manager = None
         self.projects = []  # list of project ids
         self.current_job = None
@@ -265,7 +270,10 @@ class MainWindow(QMainWindow):
         )
         os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
         self.auto_select_updated = True  # Par défaut activé
+        self.hipster_pipe_enabled = False  # Hipster Pipe désactivé par défaut
         self.job_animations = {}  # Pour gérer les timers d'animation des jobs "running"
+        self.hipster_video_widget = None  # Pour la vidéo Hipster Pipe
+        self.hipster_media_player = None  # Pour le lecteur vidéo Hipster Pipe
         self.sync_worker = None  # For project sync worker
         self.launch_worker = None  # For launching manual jobs
         self.job_data_worker = None  # For fetching job data
@@ -587,27 +595,42 @@ class MainWindow(QMainWindow):
         self._update_loading_display()
 
     def _update_loading_display(self):
+        # Utiliser QTextCursor pour modifier seulement les points de chargement sans casser le formatage
         cursor = self.log_view.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-
-        # Check if the last block is the loading dots
         document = self.log_view.document()
-        last_block = document.lastBlock()
-        last_text = last_block.text()
-        if last_text in ['·', '··', '···']:
-            # Remove the last block
-            cursor.setPosition(last_block.position())
-            cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
-            cursor.removeSelectedText()
-            # Remove the newline before it if exists
-            if cursor.position() > 0:
-                cursor.setPosition(cursor.position() - 1)
-                if self.log_view.toPlainText()[cursor.position()] == '\n':
-                    cursor.deleteChar()
 
+        # Chercher le dernier bloc qui contient seulement des points de chargement
+        block = document.lastBlock()
+        while block.isValid():
+            text = block.text().strip()
+            if text in ['·', '··', '···']:
+                # Trouver ce bloc et le remplacer
+                block_start = block.position()
+                block_end = block_start + len(block.text())
+
+                # Créer un nouveau curseur pour la modification
+                edit_cursor = self.log_view.textCursor()
+                edit_cursor.setPosition(block_start)
+                edit_cursor.setPosition(block_end, QTextCursor.MoveMode.KeepAnchor)
+                edit_cursor.removeSelectedText()
+
+                # Insérer les nouveaux points
+                if hasattr(self, '_loading_active') and self._loading_active and hasattr(self, '_loading_text'):
+                    edit_cursor.insertText(self._loading_text)
+
+                # Repositionner le curseur principal à la fin
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                self.log_view.setTextCursor(cursor)
+                return
+
+            # Passer au bloc précédent
+            block = block.previous()
+
+        # Si aucun bloc de points trouvé, ajouter à la fin
         cursor.movePosition(QTextCursor.MoveOperation.End)
         if hasattr(self, '_loading_active') and self._loading_active and hasattr(self, '_loading_text'):
-            cursor.insertText('\n' + self._loading_text)
+            cursor.insertText(self._loading_text)
+        self.log_view.setTextCursor(cursor)
 
     def _launch_manual_job(self):
         if not self.current_manual_job:
@@ -649,6 +672,7 @@ class MainWindow(QMainWindow):
             # Charger l'option UI
             if 'UI' in self.config:
                 self.auto_select_updated = self.config.getboolean('UI', 'auto_select_updated', fallback=True)
+                self.hipster_pipe_enabled = self.config.getboolean('UI', 'hipster_pipe_enabled', fallback=False)
 
                 # Restaurer les proportions du splitter après un court délai pour s'assurer que l'UI est prête
                 splitter_sizes = self.config.get('UI', 'splitter_sizes', fallback=None)
@@ -680,6 +704,7 @@ class MainWindow(QMainWindow):
         if not self.config.has_section('UI'):
             self.config.add_section('UI')
         self.config.set('UI', 'auto_select_updated', str(self.auto_select_updated))
+        self.config.set('UI', 'hipster_pipe_enabled', str(self.hipster_pipe_enabled))
 
         # Sauvegarder les proportions du splitter
         splitter_sizes = self.splitter.sizes()
@@ -771,6 +796,68 @@ class MainWindow(QMainWindow):
         # Appeler la méthode parente
         super().moveEvent(event)
 
+    def get_resource_path(self, relative_path):
+        """Get absolute path to resource, works for dev and for PyInstaller"""
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except AttributeError:
+            # If not running as PyInstaller bundle, use the script's directory
+            base_path = os.path.dirname(os.path.abspath(__file__))
+
+        return os.path.join(base_path, relative_path)
+
+    def _show_hipster_pipe_animation(self):
+        """Affiche la vidéo de célébration Hipster Pipe"""
+        print(f"_show_hipster_pipe_animation called. hipster_pipe_enabled: {self.hipster_pipe_enabled}")
+        if hasattr(self, 'hipster_video_widget') and self.hipster_video_widget:
+            print("Animation already in progress, skipping")
+            return  # Animation déjà en cours
+
+        # Vérifier si le fichier vidéo existe
+        video_path = self.get_resource_path("animation.mp4")
+        if not os.path.exists(video_path):
+            print(f"Vidéo {video_path} non trouvée, pas d'animation Hipster Pipe")
+            return
+
+        print(f"Starting Hipster Pipe animation with video: {video_path}")
+
+        # Créer le widget vidéo
+        self.hipster_video_widget = QVideoWidget(self.right_stack)
+        self.hipster_video_widget.setGeometry(50, 50, 500, 300)
+        self.hipster_video_widget.raise_()  # S'assurer qu'il est au-dessus
+
+        # Créer le media player
+        self.hipster_media_player = QMediaPlayer()
+        self.hipster_media_player.setVideoOutput(self.hipster_video_widget)
+        self.hipster_media_player.setSource(QUrl.fromLocalFile(video_path))
+
+        # Connecter le signal de fin de vidéo
+        self.hipster_media_player.mediaStatusChanged.connect(self._on_video_finished)
+
+        # Démarrer la vidéo
+        self.hipster_video_widget.show()
+        self.hipster_media_player.play()
+        print("Hipster Pipe video started playing")
+
+    def _on_video_finished(self, status):
+        """Appelé quand la vidéo Hipster Pipe se termine"""
+        from PyQt6.QtMultimedia import QMediaPlayer
+
+        print(f"Hipster Pipe video status changed: {status}")
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            print("Hipster Pipe video finished, cleaning up")
+            # Nettoyer la vidéo
+            if hasattr(self, 'hipster_media_player') and self.hipster_media_player:
+                self.hipster_media_player.stop()
+                self.hipster_media_player.deleteLater()
+                self.hipster_media_player = None
+
+            if hasattr(self, 'hipster_video_widget') and self.hipster_video_widget:
+                self.hipster_video_widget.hide()
+                self.hipster_video_widget.deleteLater()
+                self.hipster_video_widget = None
+
     def show_config(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Configuration")
@@ -837,12 +924,25 @@ class MainWindow(QMainWindow):
 
         # Auto-sync removed to prevent freezing
 
-        # Option UI
-        auto_select_label = QLabel("Afficher automatiquement la dernière pipeline qui reçoit une mise à jour:")
+        # Option UI - layout horizontal pour aligner le texte et la checkbox
+        auto_select_layout = QHBoxLayout()
+        auto_select_label = QLabel("Automatically select updated popped projects:")
         self.auto_select_checkbox = QCheckBox()
         self.auto_select_checkbox.setChecked(self.auto_select_updated)
-        layout.addWidget(auto_select_label)
-        layout.addWidget(self.auto_select_checkbox)
+        auto_select_layout.addWidget(auto_select_label)
+        auto_select_layout.addWidget(self.auto_select_checkbox)
+        auto_select_layout.addStretch()  # Pour pousser la checkbox à droite du texte
+        layout.addLayout(auto_select_layout)
+
+        # Option Hipster Pipe
+        hipster_layout = QHBoxLayout()
+        hipster_label = QLabel("Hipster Pipe (celebration animation on success):")
+        self.hipster_checkbox = QCheckBox()
+        self.hipster_checkbox.setChecked(self.hipster_pipe_enabled)
+        hipster_layout.addWidget(hipster_label)
+        hipster_layout.addWidget(self.hipster_checkbox)
+        hipster_layout.addStretch()
+        layout.addLayout(hipster_layout)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
@@ -860,6 +960,7 @@ class MainWindow(QMainWindow):
                     selected_projects.append(item.data(Qt.ItemDataRole.UserRole))
 
             self.auto_select_updated = self.auto_select_checkbox.isChecked()
+            self.hipster_pipe_enabled = self.hipster_checkbox.isChecked()
 
             try:
                 self.save_config(url, token, selected_projects)
@@ -1463,6 +1564,11 @@ class MainWindow(QMainWindow):
                         self.tree.setCurrentItem(worker.job_item)
                         self.on_item_clicked(worker.job_item, 0)
 
+                    # Hipster Pipe : célébration quand un job passe de running à success
+                    if status == 'success' and current_status == 'running' and self.hipster_pipe_enabled:
+                        print(f"Hipster Pipe triggered! Job {worker.job_id} went from {current_status} to {status}")
+                        self._show_hipster_pipe_animation()
+
     def update_log_display(self, log_content):
         # Éviter le scintillement en ne mettant à jour que si le contenu a changé
         if log_content == self.last_log_content:
@@ -1718,5 +1824,16 @@ class MainWindow(QMainWindow):
             timer.stop()
             timer.deleteLater()
         self.job_animations.clear()
+
+        # Arrêter l'animation Hipster Pipe si elle existe
+        if (hasattr(self, 'hipster_video_widget') and self.hipster_video_widget) or (hasattr(self, 'hipster_media_player') and self.hipster_media_player):
+            if hasattr(self, 'hipster_media_player') and self.hipster_media_player:
+                self.hipster_media_player.stop()
+                self.hipster_media_player.deleteLater()
+            if hasattr(self, 'hipster_video_widget') and self.hipster_video_widget:
+                self.hipster_video_widget.hide()
+                self.hipster_video_widget.deleteLater()
+            self.hipster_video_widget = None
+            self.hipster_media_player = None
 
         event.accept()
