@@ -137,9 +137,21 @@ class LogWorker(QThread):
             # Attendre avant la prochaine itération
             self.msleep(1000)  # Vérifier toutes les 1 seconde pour les logs
 
+    # Dans workers.py, classe LogWorker
     def _on_log_received(self, log):
-        if self._is_running:
+        if not self._is_running:
+            return
+
+        # Vérifier que les logs sont valides
+        if log is None:
+            log = "Aucun log disponible"
+        elif not isinstance(log, str):
+            log = str(log)
+
+        # Émettre uniquement si on a du contenu ou si c'est la première réception
+        if log or not hasattr(self, 'last_log_emitted') or not self.last_log_emitted:
             self.log_ready.emit(log)
+            self.last_log_emitted = bool(log)
 
     def stop(self):
         self._is_running = False
