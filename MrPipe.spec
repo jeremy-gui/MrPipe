@@ -87,12 +87,12 @@ app = BUNDLE(
     name='Mr. Pipe.app',
     icon='logo.icns',  # Use logo.icns as app icon
     bundle_identifier='com.mrpipe.app',
-    version='1.0.2',
+    version='1.0.0',
     info_plist={
         'CFBundleName': 'Mr. Pipe',
         'CFBundleDisplayName': 'Mr. Pipe',
         'CFBundleIdentifier': 'com.mrpipe.app',
-        'CFBundleVersion': '1.0.2',
+        'CFBundleVersion': '1.0.0',
         'CFBundleShortVersionString': '1.0',
         'NSHumanReadableCopyright': 'Copyright © 2024 Mr. Pipe. All rights reserved.',
         'LSMinimumSystemVersion': '10.12',
