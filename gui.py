@@ -15,13 +15,14 @@ from gitlab_manager import GitLabManager
 from PyQt6 import sip
 
 # Import refactored modules
-from gui_modules.workers import (
-    HttpWorker, ProjectSyncWorker, LaunchWorker, LogWorker,
-    JobStatusWorker, JobDataWorker
-)
+from gui_modules.workers import LaunchWorker
 from gui_modules.dialogs import ConfigDialog, AboutDialog
-from gui_modules.styles import get_dark_mode_stylesheet, get_log_view_stylesheet
-from gui_modules.log_formatter import LogFormatter
+from gui_modules.styles import get_dark_mode_stylesheet, get_log_view_stylesheet, LOG_FONT_SIZE
+from gui_modules.config_manager import ConfigManager
+from gui_modules.project_manager import ProjectManager
+from gui_modules.job_manager import JobManager, JobColorManager
+from gui_modules.log_display import LogDisplay
+from gui_modules.ui_helpers import UIHelpers, HipsterPipeAnimation, LoadingAnimation
 
 
 # Workers are now imported from gui.workers module
@@ -59,12 +60,25 @@ class MainWindow(QMainWindow):
         self.current_manual_job = None  # For launching manual jobs
         self._loading_state = 0  # For loading animation
         self._loading_text = "·"  # For loading animation
-        self._loading_active = False  # For loading animation
+        self.hipster_pipe_enabled = False
+        
+        # Initialize managers
+        self.config_manager = ConfigManager(self)
+        self.project_manager = ProjectManager(self)
+        self.job_manager = JobManager(self)
+        self.log_display = LogDisplay(self)
+        self.hipster_animation = HipsterPipeAnimation(self)
+        self.loading_animation = LoadingAnimation(self)
+        
+        # Setup UI
         self.setup_ui()
+        self.configure_log_view_font()
+        self.config_manager.load_config()
+        self.setup_timers()
 
-        # Configuration simple de la police
+    def configure_log_view_font(self):
+        """Configure la police pour la vue des logs"""
         try:
-            # Essayer d'abord avec une police système courante
             font = QFont('Monaco')
             if not font.exactMatch():
                 font = QFont('Consolas')
@@ -73,20 +87,15 @@ class MainWindow(QMainWindow):
                     if not font.exactMatch():
                         font = QFont('monospace')
 
-            # Configurer la police
-            font.setPointSize(16)  # Taille de police augmentée
+            font.setPointSize(LOG_FONT_SIZE)
             font.setStyleHint(QFont.StyleHint.TypeWriter)
             font.setFixedPitch(True)
 
-            # Configurer la zone de texte
             self.log_view.setFont(font)
             self.log_view.setAcceptRichText(True)
-
-            # Utiliser une configuration CSS améliorée
             self.log_view.setStyleSheet(get_log_view_stylesheet())
         except Exception as e:
             print(f"Erreur lors de la configuration de la police: {e}")
-            # Configuration minimale en cas d'échec
             self.log_view.setStyleSheet("""
                 QTextEdit {
                     background-color: #1e1e1e;
@@ -94,9 +103,6 @@ class MainWindow(QMainWindow):
                     font-family: monospace;
                 }
             """)
-
-        self.load_config()  # Doit être après setup_ui() pour pouvoir afficher les messages
-        self.setup_timers()
 
     def setup_ui(self):
         """Configure l'interface utilisateur principale"""
@@ -173,48 +179,10 @@ class MainWindow(QMainWindow):
     # Stylesheet now imported from gui.styles module
 
     def _animate_loading_dots(self):
-        states = ["·", "··", "···"]
-        self._loading_state = (self._loading_state + 1) % len(states)
-        self._loading_text = states[self._loading_state]
-        self._update_loading_display()
+        self.loading_animation.animate_dots()
 
     def _update_loading_display(self):
-        # Utiliser QTextCursor pour modifier seulement les points de chargement sans casser le formatage
-        cursor = self.log_view.textCursor()
-        document = self.log_view.document()
-
-        # Chercher le dernier bloc qui contient seulement des points de chargement
-        block = document.lastBlock()
-        while block.isValid():
-            text = block.text().strip()
-            if text in ['·', '··', '···']:
-                # Trouver ce bloc et le remplacer
-                block_start = block.position()
-                block_end = block_start + len(block.text())
-
-                # Créer un nouveau curseur pour la modification
-                edit_cursor = self.log_view.textCursor()
-                edit_cursor.setPosition(block_start)
-                edit_cursor.setPosition(block_end, QTextCursor.MoveMode.KeepAnchor)
-                edit_cursor.removeSelectedText()
-
-                # Insérer les nouveaux points
-                if hasattr(self, '_loading_active') and self._loading_active and hasattr(self, '_loading_text'):
-                    edit_cursor.insertText(self._loading_text)
-
-                # Repositionner le curseur principal à la fin
-                cursor.movePosition(QTextCursor.MoveOperation.End)
-                self.log_view.setTextCursor(cursor)
-                return
-
-            # Passer au bloc précédent
-            block = block.previous()
-
-        # Si aucun bloc de points trouvé, ajouter à la fin
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        if hasattr(self, '_loading_active') and self._loading_active and hasattr(self, '_loading_text'):
-            cursor.insertText(self._loading_text)
-        self.log_view.setTextCursor(cursor)
+        self.loading_animation.update_display()
 
     def _launch_manual_job(self):
         if not self.current_manual_job:
@@ -233,120 +201,16 @@ class MainWindow(QMainWindow):
         self.launch_worker.launch_error.connect(self._on_launch_error)
         self.launch_worker.start()
 
-    def load_config(self):
-        if os.path.exists(self.config_file):
-            self.config.read(self.config_file)
-            if 'GitLab' in self.config:
-                config = self.config['GitLab']
-                url = config.get('url', 'https://gitlab.com')
-                token = config.get('token', '')
-                projects = config.get('projects', '')
-
-                if token and projects:
-                    try:
-                        self.projects = [int(p.strip()) for p in projects.split(',') if p.strip()]
-                        self.gitlab_manager = GitLabManager(url, token)
-                        self.log_view.setPlainText("Chargement des projets...")
-                        self.update_projects()
-                    except Exception as e:
-                        self.log_view.setPlainText(f"Erreur lors du chargement de la configuration : {str(e)}")
-                else:
-                    self.log_view.setPlainText("Veuillez configurer l'URL GitLab et le token dans les paramètres.")
-
-            # Charger l'option UI
-            if 'UI' in self.config:
-                self.auto_select_updated = self.config.getboolean('UI', 'auto_select_updated', fallback=True)
-                self.hipster_pipe_enabled = self.config.getboolean('UI', 'hipster_pipe_enabled', fallback=False)
-
-                # Restaurer les proportions du splitter après un court délai pour s'assurer que l'UI est prête
-                splitter_sizes = self.config.get('UI', 'splitter_sizes', fallback=None)
-                QTimer.singleShot(100, lambda: self._restore_splitter_sizes(splitter_sizes))
-
-                # Restaurer la géométrie de la fenêtre
-                geometry_b64 = self.config.get('UI', 'window_geometry', fallback=None)
-                if geometry_b64:
-                    try:
-                        import base64
-                        geometry_data = base64.b64decode(geometry_b64)
-                        from PyQt6.QtCore import QByteArray
-                        geometry = QByteArray(geometry_data)
-                        self.restoreGeometry(geometry)
-                    except Exception as e:
-                        print(f"Erreur lors de la restauration de la géométrie: {e}")
-        else:
-            self.log_view.setPlainText("Bienvenue ! Veuillez configurer l'application dans le menu Paramètres.")
+    # Moved to ConfigManager
 
     def save_config(self, url, token, projects):
-        if not self.config.has_section('GitLab'):
-            self.config.add_section('GitLab')
-
-        self.config['GitLab']['url'] = url
-        self.config['GitLab']['token'] = token
-        self.config['GitLab']['projects'] = ','.join(str(p) for p in projects)
-
-        # Sauvegarder l'option UI
-        if not self.config.has_section('UI'):
-            self.config.add_section('UI')
-        self.config.set('UI', 'auto_select_updated', str(self.auto_select_updated))
-        self.config.set('UI', 'hipster_pipe_enabled', str(self.hipster_pipe_enabled))
-
-        # Sauvegarder les proportions du splitter
-        splitter_sizes = self.splitter.sizes()
-        if splitter_sizes:
-            self.config.set('UI', 'splitter_sizes', ','.join(str(size) for size in splitter_sizes))
-
-        # Sauvegarder la géométrie de la fenêtre
-        geometry = self.saveGeometry()
-        if geometry:
-            import base64
-            geometry_b64 = base64.b64encode(geometry.data()).decode('ascii')
-            self.config.set('UI', 'window_geometry', geometry_b64)
-
-        with open(self.config_file, 'w') as f:
-            self.config.write(f)
+        self.config_manager.save_config(url, token, projects)
 
     def _restore_splitter_sizes(self, splitter_sizes_str):
-        """Restaure les proportions du splitter depuis la configuration"""
-        if splitter_sizes_str:
-            try:
-                sizes = [int(s.strip()) for s in splitter_sizes_str.split(',')]
-                if len(sizes) >= 2:
-                    # S'assurer que les tailles respectent les minimums
-                    if sizes[0] < 200:
-                        sizes[0] = 200
-                    if sizes[1] < 400:
-                        sizes[1] = 400
-                    self.splitter.setSizes(sizes)
-            except (ValueError, IndexError) as e:
-                print(f"Erreur lors de la restauration des proportions du splitter: {e}")
-                # Utiliser les proportions par défaut
-                pass
+        self.config_manager.restore_splitter_sizes(splitter_sizes_str)
 
     def _auto_save_geometry(self):
-        """Sauvegarde automatique de la géométrie et des proportions du splitter"""
-        try:
-            # Créer la section UI si elle n'existe pas
-            if not self.config.has_section('UI'):
-                self.config.add_section('UI')
-
-            # Sauvegarder les proportions du splitter
-            splitter_sizes = self.splitter.sizes()
-            if splitter_sizes:
-                self.config.set('UI', 'splitter_sizes', ','.join(str(size) for size in splitter_sizes))
-
-            # Sauvegarder la géométrie de la fenêtre
-            geometry = self.saveGeometry()
-            if geometry:
-                import base64
-                geometry_b64 = base64.b64encode(geometry.data()).decode('ascii')
-                self.config.set('UI', 'window_geometry', geometry_b64)
-
-            # Écrire dans le fichier
-            with open(self.config_file, 'w') as f:
-                self.config.write(f)
-
-        except Exception as e:
-            print(f"Erreur lors de la sauvegarde automatique: {e}")
+        self.config_manager.auto_save_geometry()
 
     def _on_resize_event(self, event):
         """Appelé quand la fenêtre est redimensionnée"""
@@ -381,66 +245,13 @@ class MainWindow(QMainWindow):
         super().moveEvent(event)
 
     def get_resource_path(self, relative_path):
-        """Get absolute path to resource, works for dev and for PyInstaller"""
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except AttributeError:
-            # If not running as PyInstaller bundle, use the script's directory
-            base_path = os.path.dirname(os.path.abspath(__file__))
-
-        return os.path.join(base_path, relative_path)
+        return UIHelpers.get_resource_path(relative_path)
 
     def _show_hipster_pipe_animation(self):
-        """Affiche la vidéo de célébration Hipster Pipe"""
-        print(f"_show_hipster_pipe_animation called. hipster_pipe_enabled: {self.hipster_pipe_enabled}")
-        if hasattr(self, 'hipster_video_widget') and self.hipster_video_widget:
-            print("Animation already in progress, skipping")
-            return  # Animation déjà en cours
-
-        # Vérifier si le fichier vidéo existe
-        video_path = self.get_resource_path("animation.mp4")
-        if not os.path.exists(video_path):
-            print(f"Vidéo {video_path} non trouvée, pas d'animation Hipster Pipe")
-            return
-
-        print(f"Starting Hipster Pipe animation with video: {video_path}")
-
-        # Créer le widget vidéo
-        self.hipster_video_widget = QVideoWidget(self.right_stack)
-        self.hipster_video_widget.setGeometry(50, 50, 500, 300)
-        self.hipster_video_widget.raise_()  # S'assurer qu'il est au-dessus
-
-        # Créer le media player
-        self.hipster_media_player = QMediaPlayer()
-        self.hipster_media_player.setVideoOutput(self.hipster_video_widget)
-        self.hipster_media_player.setSource(QUrl.fromLocalFile(video_path))
-
-        # Connecter le signal de fin de vidéo
-        self.hipster_media_player.mediaStatusChanged.connect(self._on_video_finished)
-
-        # Démarrer la vidéo
-        self.hipster_video_widget.show()
-        self.hipster_media_player.play()
-        print("Hipster Pipe video started playing")
+        self.hipster_animation.show_animation()
 
     def _on_video_finished(self, status):
-        """Appelé quand la vidéo Hipster Pipe se termine"""
-        from PyQt6.QtMultimedia import QMediaPlayer
-
-        print(f"Hipster Pipe video status changed: {status}")
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            print("Hipster Pipe video finished, cleaning up")
-            # Nettoyer la vidéo
-            if hasattr(self, 'hipster_media_player') and self.hipster_media_player:
-                self.hipster_media_player.stop()
-                self.hipster_media_player.deleteLater()
-                self.hipster_media_player = None
-
-            if hasattr(self, 'hipster_video_widget') and self.hipster_video_widget:
-                self.hipster_video_widget.hide()
-                self.hipster_video_widget.deleteLater()
-                self.hipster_video_widget = None
+        self.hipster_animation.on_video_finished(status)
 
     def show_config(self):
         dialog = ConfigDialog(self, self.config, self.config_file)
@@ -502,6 +313,9 @@ class MainWindow(QMainWindow):
     # Filter and limit methods removed - now handled in ConfigDialog
 
     def update_projects(self, force_update=False):
+        self.project_manager.update_projects(force_update)
+
+    def _fetch_project_data_old(self, proj_id):
         if not self.gitlab_manager:
             return
 
@@ -767,6 +581,9 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(60000, lambda: self.update_projects(force_update=True))
 
     def on_item_clicked(self, item, column):
+        self.job_manager.on_item_clicked(item, column)
+
+    def _on_item_clicked_old(self, item, column):
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
@@ -980,6 +797,9 @@ class MainWindow(QMainWindow):
             job_item.setFont(0, font)
 
     def _on_job_status_updated(self, status):
+        JobColorManager.on_job_status_updated(self, status)
+
+    def _on_job_status_updated_old(self, status):
         """Appelé quand le statut d'un job est mis à jour"""
         worker = self.sender()
         if worker and hasattr(worker, 'job_item'):
@@ -1004,6 +824,9 @@ class MainWindow(QMainWindow):
                         self._show_hipster_pipe_animation()
 
     def update_log_display(self, log_content):
+        self.log_display.update_log_display(log_content)
+
+    def _update_log_display_old(self, log_content):
         # Éviter le scintillement en ne mettant à jour que si le contenu a changé
         if log_content == self.last_log_content:
             return

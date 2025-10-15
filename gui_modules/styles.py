@@ -2,6 +2,11 @@
 Styles and themes for the application
 """
 
+# Font size constants for consistency
+LOG_FONT_SIZE = 16  # Main log display font size
+TREE_FONT_SIZE_PROJECT = 12  # Project names in tree
+TREE_FONT_SIZE_PIPELINE = 11  # Pipeline names in tree
+
 
 def get_dark_mode_stylesheet():
     """Retourne le stylesheet dark mode complet"""
@@ -198,17 +203,17 @@ def get_dark_mode_stylesheet():
 
 def get_log_view_stylesheet():
     """Retourne le stylesheet pour la vue des logs"""
-    return """
-    QTextEdit {
+    return f"""
+    QTextEdit {{
         background-color: #1e1e1e;
         color: #ffffff;
         font-family: 'Courier New', monospace;
-        font-size: 16pt;
+        font-size: {LOG_FONT_SIZE}pt;
         line-height: 1.5;
         padding: 10px;
         selection-background-color: #4a90d9;
         selection-color: white;
-    }
+    }}
     """
 
 
