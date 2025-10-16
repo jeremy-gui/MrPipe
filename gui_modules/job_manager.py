@@ -101,6 +101,9 @@ class JobManager:
                 self.window.log_worker.start()
             else:
                 print("Le job est terminé, pas de suivi en temps réel nécessaire")
+                # Arrêter l'animation de chargement
+                self.window.loading_timer.stop()
+                self.window.loading_animation.update_display()
 
                 status_messages = {
                     'success': '✅ Le job s\'est terminé avec succès',
@@ -117,6 +120,9 @@ class JobManager:
         else:
             if job_status in ['success', 'failed', 'canceled', 'skipped']:
                 self.window.log_view.setPlainText("Aucun log disponible pour ce job terminé")
+                # Arrêter l'animation de chargement
+                self.window.loading_timer.stop()
+                self.window.loading_animation.update_display()
             else:
                 self.window.log_view.setPlainText("Logs en cours de chargement...")
                 self.window.loading_animation.update_display()

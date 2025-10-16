@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
         self.hipster_pipe_enabled = False
         self.is_initial_loading = False  # Flag to track initial loading state
         self.log_font_size = 16  # Default log font size
+        self.pending_config_dialog = False  # Flag to open config after loading
         
         # Initialize managers
         self.config_manager = ConfigManager(self)
@@ -235,18 +236,21 @@ class MainWindow(QMainWindow):
         super().moveEvent(event)
 
     def show_config(self):
-        # Warn if loading is in progress
+        # If loading is in progress, wait for it to finish
         if self.is_initial_loading:
-            reply = QMessageBox.question(
+            QMessageBox.information(
                 self,
-                "Chargement en cours",
-                "Un chargement de projets est en cours. Voulez-vous continuer ?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
+                "Loading in Progress",
+                "Projects are currently loading. Settings will open automatically once loading is complete.",
+                QMessageBox.StandardButton.Ok
             )
-            if reply == QMessageBox.StandardButton.No:
-                return
+            self.pending_config_dialog = True
+            return
         
+        self._open_config_dialog()
+    
+    def _open_config_dialog(self):
+        """Open the configuration dialog"""
         dialog = ConfigDialog(self, self.config, self.config_file)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             url = dialog.get_url()
@@ -329,18 +333,31 @@ class MainWindow(QMainWindow):
     def setup_timers(self):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.project_manager.update_projects)
-        # Commencer avec un intervalle plus long après le chargement initial
-        QTimer.singleShot(10000, lambda: self.timer.start(3000))  # Attendre 10s puis mettre à jour toutes les 2s
+        
+        # Timer pour démarrer les mises à jour automatiques
+        self.start_updates_timer = QTimer(self)
+        self.start_updates_timer.setSingleShot(True)
+        self.start_updates_timer.timeout.connect(lambda: self.timer.start(3000))
+        self.start_updates_timer.start(10000)  # Attendre 10s puis mettre à jour toutes les 3s
 
         self.loading_timer = QTimer(self)
         self.loading_timer.timeout.connect(self.loading_animation.animate_dots)
 
-        # Planifier une première mise à jour différée pour laisser le temps à l'interface de se charger
-        QTimer.singleShot(8000, self.project_manager.update_projects)
+        # Timer pour la première mise à jour
+        self.initial_update_timer = QTimer(self)
+        self.initial_update_timer.setSingleShot(True)
+        self.initial_update_timer.timeout.connect(self.project_manager.update_projects)
+        self.initial_update_timer.start(8000)  # Première mise à jour après 8s
 
     def closeEvent(self, event):
         # Sauvegarder automatiquement la géométrie et les proportions avant de fermer
         self.config_manager.auto_save_geometry()
+        
+        # Arrêter le chargement progressif immédiatement
+        if hasattr(self, 'project_manager'):
+            self.project_manager.loading_queue.clear()
+            self.project_manager.is_loading = False
+            self.is_initial_loading = False
 
         # Arrêter tous les workers en cours d'exécution
         if self.log_worker:
@@ -377,6 +394,14 @@ class MainWindow(QMainWindow):
             self.timer.stop()
         if hasattr(self, 'loading_timer') and self.loading_timer:
             self.loading_timer.stop()
+        if hasattr(self, 'start_updates_timer') and self.start_updates_timer:
+            self.start_updates_timer.stop()
+        if hasattr(self, 'initial_update_timer') and self.initial_update_timer:
+            self.initial_update_timer.stop()
+        if hasattr(self, 'select_job_timer') and self.select_job_timer:
+            self.select_job_timer.stop()
+        if hasattr(self, 'open_config_timer') and self.open_config_timer:
+            self.open_config_timer.stop()
 
         # Arrêter les timers de sauvegarde automatique
         if hasattr(self, '_resize_timer') and self._resize_timer:

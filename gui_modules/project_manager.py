@@ -55,16 +55,41 @@ class ProjectManager:
 
     def _load_next_project(self):
         """Load the next project in the queue progressively"""
+        # Check if window is still valid
+        if not hasattr(self, 'window') or not self.window:
+            return
+            
         if not self.loading_queue:
             self.is_loading = False
             # Remove loading message
-            for i in range(self.window.tree.topLevelItemCount()):
-                item = self.window.tree.topLevelItem(i)
-                if item and item.text(0) == "Chargement des projets en cours...":
-                    self.window.tree.takeTopLevelItem(i)
-                    break
+            try:
+                for i in range(self.window.tree.topLevelItemCount()):
+                    item = self.window.tree.topLevelItem(i)
+                    if item and item.text(0) == "Chargement des projets en cours...":
+                        self.window.tree.takeTopLevelItem(i)
+                        break
+            except:
+                pass
+            
             # Signal that initial loading is complete
             self.window.is_initial_loading = False
+            
+            # Select and load the most recent job
+            if not hasattr(self.window, 'select_job_timer'):
+                self.window.select_job_timer = QTimer(self.window)
+                self.window.select_job_timer.setSingleShot(True)
+                self.window.select_job_timer.timeout.connect(self._select_most_recent_job)
+            self.window.select_job_timer.start(200)
+            
+            # Open config dialog if it was requested during loading
+            if self.window.pending_config_dialog:
+                self.window.pending_config_dialog = False
+                # Use QTimer to open dialog after event loop processes
+                if not hasattr(self.window, 'open_config_timer'):
+                    self.window.open_config_timer = QTimer(self.window)
+                    self.window.open_config_timer.setSingleShot(True)
+                    self.window.open_config_timer.timeout.connect(self.window._open_config_dialog)
+                self.window.open_config_timer.start(300)
             return
 
         if self.is_loading:
@@ -111,18 +136,48 @@ class ProjectManager:
 
     def _on_progressive_load_done(self, data, proj_id):
         """Called when a project loads during progressive loading"""
-        self.on_project_data_loaded(data, proj_id)
-        self.is_loading = False
-        # Load next project after a short delay to keep UI responsive
-        QTimer.singleShot(100, self._load_next_project)
+        try:
+            self.on_project_data_loaded(data, proj_id)
+        except Exception as e:
+            print(f"Error in _on_progressive_load_done: {e}")
+        finally:
+            self.is_loading = False
+            # Load next project after a short delay to keep UI responsive
+            if hasattr(self.window, 'project_manager'):
+                QTimer.singleShot(100, self._load_next_project)
 
     def _on_progressive_load_error(self, error, proj_id):
         """Called when a project fails during progressive loading"""
-        self.on_project_error(error, proj_id)
-        self.is_loading = False
-        # Continue with next project
-        QTimer.singleShot(100, self._load_next_project)
+        try:
+            self.on_project_error(error, proj_id)
+        except Exception as e:
+            print(f"Error in _on_progressive_load_error: {e}")
+        finally:
+            self.is_loading = False
+            # Continue with next project
+            if hasattr(self.window, 'project_manager'):
+                QTimer.singleShot(100, self._load_next_project)
     
+    def _select_most_recent_job(self):
+        """Select and load the most recent job after initial loading"""
+        try:
+            # Find the first project with jobs
+            for i in range(self.window.tree.topLevelItemCount()):
+                project_item = self.window.tree.topLevelItem(i)
+                if project_item and project_item.childCount() > 0:
+                    # Get the first pipeline (most recent)
+                    pipeline_item = project_item.child(0)
+                    if pipeline_item and pipeline_item.childCount() > 0:
+                        # Get the first job in the pipeline
+                        first_job_item = pipeline_item.child(0)
+                        if first_job_item:
+                            # Select and load this job
+                            self.window.tree.setCurrentItem(first_job_item)
+                            self.window.job_manager.on_item_clicked(first_job_item, 0)
+                            print("Selected most recent job after initial loading")
+                            return
+        except Exception as e:
+            print(f"Error selecting most recent job: {e}")
 
     def _cleanup_removed_projects(self):
         """Remove projects that are no longer selected"""
@@ -257,7 +312,8 @@ class ProjectManager:
 
                 pipeline_item.setExpanded(True)
 
-                if jobs:
+                # Ne charger les logs que si ce n'est pas le chargement initial
+                if jobs and not self.window.is_initial_loading:
                     first_job_item = pipeline_item.child(0)
                     self.window.tree.setCurrentItem(first_job_item)
                     self.window.job_manager.on_item_clicked(first_job_item, 0)
