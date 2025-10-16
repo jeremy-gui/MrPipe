@@ -212,14 +212,18 @@ def get_dark_mode_stylesheet():
     """
 
 
-def get_log_view_stylesheet():
-    """Retourne le stylesheet pour la vue des logs"""
+def get_log_view_stylesheet(font_size=16):
+    """Retourne le stylesheet pour la vue des logs
+    
+    Args:
+        font_size: Taille de la police en points (défaut: 16)
+    """
     return f"""
     QTextEdit {{
         background-color: #1e1e1e;
         color: #ffffff;
         font-family: 'Courier New', monospace;
-        font-size: {LOG_FONT_SIZE}pt;
+        font-size: {font_size}pt;
         line-height: 1.5;
         padding: 10px;
         selection-background-color: #4a90d9;

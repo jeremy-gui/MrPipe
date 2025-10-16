@@ -5,7 +5,6 @@ Log display utilities
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 
 from .log_formatter import LogFormatter
-from .styles import LOG_FONT_SIZE
 
 
 class LogDisplay:
@@ -64,7 +63,7 @@ class LogDisplay:
 
             # Set font and size for content
             current_font = self.window.log_view.font()
-            current_font.setPointSize(LOG_FONT_SIZE)
+            current_font.setPointSize(self.window.log_font_size)
             self.window.log_view.setFont(current_font)
 
             # Create cursor at document start
@@ -74,14 +73,14 @@ class LogDisplay:
             # Apply default format with larger font
             default_format = QTextCharFormat()
             default_format.setForeground(QColor("white"))
-            default_format.setFontPointSize(LOG_FONT_SIZE)
+            default_format.setFontPointSize(self.window.log_font_size)
             cursor.setCharFormat(default_format)
 
             # Clean ANSI codes
             cleaned_content = LogFormatter.clean_ansi_codes(log_content)
 
             # Process content with ANSI codes
-            LogFormatter.process_ansi_codes(cleaned_content, cursor, LOG_FONT_SIZE)
+            LogFormatter.process_ansi_codes(cleaned_content, cursor, self.window.log_font_size)
 
             # Scroll to bottom
             scrollbar = self.window.log_view.verticalScrollBar()

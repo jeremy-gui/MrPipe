@@ -7,7 +7,7 @@ import configparser
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QListWidget, QListWidgetItem, QDialogButtonBox,
-    QCheckBox, QMessageBox, QTextEdit, QWidget
+    QCheckBox, QMessageBox, QTextEdit, QWidget, QSpinBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
@@ -116,6 +116,21 @@ class ConfigDialog(QDialog):
         hipster_layout.addStretch()
         layout.addLayout(hipster_layout)
 
+        # Log font size option
+        font_size_layout = QHBoxLayout()
+        font_size_label = QLabel("Taille du texte des logs:")
+        self.font_size_spinbox = QSpinBox()
+        self.font_size_spinbox.setMinimum(8)
+        self.font_size_spinbox.setMaximum(32)
+        self.font_size_spinbox.setSuffix(" pt")
+        self.font_size_spinbox.setValue(
+            self.parent_window.log_font_size if hasattr(self.parent_window, 'log_font_size') else 16
+        )
+        font_size_layout.addWidget(font_size_label)
+        font_size_layout.addWidget(self.font_size_spinbox)
+        font_size_layout.addStretch()
+        layout.addLayout(font_size_layout)
+
         # Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -205,6 +220,20 @@ class ConfigDialog(QDialog):
 
     def get_hipster_pipe_enabled(self):
         return self.hipster_checkbox.isChecked()
+
+    def get_log_font_size(self):
+        return self.font_size_spinbox.value()
+    
+    def closeEvent(self, event):
+        """Clean up sync worker before closing"""
+        if self.sync_worker and self.sync_worker.isRunning():
+            self.sync_worker.stop()
+            self.sync_worker.wait(500)
+            if self.sync_worker.isRunning():
+                self.sync_worker.terminate()
+                self.sync_worker.wait()
+            self.sync_worker = None
+        event.accept()
 
 
 class AboutDialog(QDialog):

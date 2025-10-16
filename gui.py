@@ -17,7 +17,7 @@ from PyQt6 import sip
 # Import refactored modules
 from gui_modules.workers import LaunchWorker
 from gui_modules.dialogs import ConfigDialog, AboutDialog
-from gui_modules.styles import get_dark_mode_stylesheet, get_log_view_stylesheet, LOG_FONT_SIZE
+from gui_modules.styles import get_dark_mode_stylesheet, get_log_view_stylesheet
 from gui_modules.config_manager import ConfigManager
 from gui_modules.project_manager import ProjectManager
 from gui_modules.job_manager import JobManager, JobColorManager
@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
         self._loading_text = "·"  # For loading animation
         self.hipster_pipe_enabled = False
         self.is_initial_loading = False  # Flag to track initial loading state
+        self.log_font_size = 16  # Default log font size
         
         # Initialize managers
         self.config_manager = ConfigManager(self)
@@ -88,13 +89,13 @@ class MainWindow(QMainWindow):
                     if not font.exactMatch():
                         font = QFont('monospace')
 
-            font.setPointSize(LOG_FONT_SIZE)
+            font.setPointSize(self.log_font_size)
             font.setStyleHint(QFont.StyleHint.TypeWriter)
             font.setFixedPitch(True)
 
             self.log_view.setFont(font)
             self.log_view.setAcceptRichText(True)
-            self.log_view.setStyleSheet(get_log_view_stylesheet())
+            self.log_view.setStyleSheet(get_log_view_stylesheet(self.log_font_size))
         except Exception as e:
             print(f"Erreur lors de la configuration de la police: {e}")
             self.log_view.setStyleSheet("""
@@ -253,6 +254,14 @@ class MainWindow(QMainWindow):
             selected_projects = dialog.get_selected_projects()
             self.auto_select_updated = dialog.get_auto_select_updated()
             self.hipster_pipe_enabled = dialog.get_hipster_pipe_enabled()
+            new_font_size = dialog.get_log_font_size()
+            
+            # Update font size if changed
+            if new_font_size != self.log_font_size:
+                self.log_font_size = new_font_size
+                self.configure_log_view_font()
+                # Reformat existing logs with new font size
+                self._reformat_current_logs()
 
             try:
                 self.config_manager.save_config(url, token, selected_projects)
@@ -267,6 +276,16 @@ class MainWindow(QMainWindow):
 
     # Old config dialog removed - now using ConfigDialog from gui.dialogs
 
+    def _reformat_current_logs(self):
+        """Reformate les logs actuellement affichés avec la nouvelle taille de police"""
+        if self.last_log_content:
+            # Save the content
+            content = self.last_log_content
+            # Reset to force a full update
+            self.last_log_content = ""
+            # Force a full update with the new font size
+            self.log_display.update_log_display(content)
+    
     def show_about(self):
         """Affiche la fenêtre À propos"""
         dialog = AboutDialog(self, UIHelpers.get_resource_path)
@@ -327,8 +346,10 @@ class MainWindow(QMainWindow):
         if self.log_worker:
             self.log_worker.stop()
             if self.log_worker.isRunning():
-                self.log_worker.wait(1000)
-            self.log_worker.deleteLater()
+                self.log_worker.wait(500)
+                if self.log_worker.isRunning():
+                    self.log_worker.terminate()
+                    self.log_worker.wait()
             self.log_worker = None
 
         # sync_worker is now handled in ConfigDialog
@@ -336,15 +357,19 @@ class MainWindow(QMainWindow):
         if self.launch_worker:
             self.launch_worker.stop()
             if self.launch_worker.isRunning():
-                self.launch_worker.wait(1000)
-            self.launch_worker.deleteLater()
+                self.launch_worker.wait(500)
+                if self.launch_worker.isRunning():
+                    self.launch_worker.terminate()
+                    self.launch_worker.wait()
             self.launch_worker = None
 
         if self.job_data_worker:
             self.job_data_worker.stop()
             if self.job_data_worker.isRunning():
-                self.job_data_worker.wait(1000)
-            self.job_data_worker.deleteLater()
+                self.job_data_worker.wait(500)
+                if self.job_data_worker.isRunning():
+                    self.job_data_worker.terminate()
+                    self.job_data_worker.wait()
             self.job_data_worker = None
 
         # Arrêter les timers
@@ -365,8 +390,10 @@ class MainWindow(QMainWindow):
                 try:
                     worker.stop()
                     if worker.isRunning():
-                        worker.wait(1000)  # Wait max 1 second
-                    worker.deleteLater()
+                        worker.wait(500)
+                        if worker.isRunning():
+                            worker.terminate()
+                            worker.wait()
                 except:
                     pass
         self.project_workers.clear()
@@ -377,8 +404,10 @@ class MainWindow(QMainWindow):
                 try:
                     worker.stop()
                     if worker.isRunning():
-                        worker.wait(1000)  # Wait max 1 second
-                    worker.deleteLater()
+                        worker.wait(500)
+                        if worker.isRunning():
+                            worker.terminate()
+                            worker.wait()
                 except:
                     pass
         self.job_status_workers.clear()

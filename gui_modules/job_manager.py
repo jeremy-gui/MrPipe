@@ -30,12 +30,20 @@ class JobManager:
 
         if self.window.log_worker:
             self.window.log_worker.stop()
-            self.window.log_worker.wait()
+            if self.window.log_worker.isRunning():
+                self.window.log_worker.wait(500)
+                if self.window.log_worker.isRunning():
+                    self.window.log_worker.terminate()
+                    self.window.log_worker.wait()
             self.window.log_worker = None
 
         if self.window.job_data_worker:
             self.window.job_data_worker.stop()
-            self.window.job_data_worker.wait()
+            if self.window.job_data_worker.isRunning():
+                self.window.job_data_worker.wait(500)
+                if self.window.job_data_worker.isRunning():
+                    self.window.job_data_worker.terminate()
+                    self.window.job_data_worker.wait()
             self.window.job_data_worker = None
 
         proj_id, job_id = data
@@ -55,7 +63,11 @@ class JobManager:
         """Called when job data (status and logs) is received"""
         if self.window.job_data_worker:
             self.window.job_data_worker.stop()
-            self.window.job_data_worker.wait()
+            if self.window.job_data_worker.isRunning():
+                self.window.job_data_worker.wait(500)
+                if self.window.job_data_worker.isRunning():
+                    self.window.job_data_worker.terminate()
+                    self.window.job_data_worker.wait()
             self.window.job_data_worker = None
 
         if job_data is None:
@@ -138,7 +150,11 @@ class JobManager:
                 self.window.loading_timer.stop()
                 self.window.loading_animation.update_display()
                 self.window.log_worker.stop()
-                self.window.log_worker.wait()
+                if self.window.log_worker.isRunning():
+                    self.window.log_worker.wait(500)
+                    if self.window.log_worker.isRunning():
+                        self.window.log_worker.terminate()
+                        self.window.log_worker.wait()
 
 
 class JobColorManager:

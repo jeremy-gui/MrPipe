@@ -89,7 +89,11 @@ class ProjectManager:
                     worker.finished.disconnect()
                     worker.error.disconnect()
                     worker.stop()
-                    worker.wait()
+                    if worker.isRunning():
+                        worker.wait(500)
+                        if worker.isRunning():
+                            worker.terminate()
+                            worker.wait()
                 except:
                     pass
 
@@ -134,14 +138,20 @@ class ProjectManager:
                 worker = self.window.project_workers[proj_id]
                 if worker.isRunning():
                     worker.stop()
-                    worker.wait()
+                    worker.wait(500)
+                    if worker.isRunning():
+                        worker.terminate()
+                        worker.wait()
                 del self.window.project_workers[proj_id]
             keys_to_remove = [k for k in self.window.job_status_workers if k[0] == proj_id]
             for k in keys_to_remove:
                 worker = self.window.job_status_workers[k]
                 if worker.isRunning():
                     worker.stop()
-                    worker.wait()
+                    worker.wait(500)
+                    if worker.isRunning():
+                        worker.terminate()
+                        worker.wait()
                 del self.window.job_status_workers[k]
 
     def fetch_project_data(self, proj_id):

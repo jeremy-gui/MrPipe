@@ -38,6 +38,10 @@ class ConfigManager:
             if 'UI' in self.window.config:
                 self.window.auto_select_updated = self.window.config.getboolean('UI', 'auto_select_updated', fallback=True)
                 self.window.hipster_pipe_enabled = self.window.config.getboolean('UI', 'hipster_pipe_enabled', fallback=False)
+                self.window.log_font_size = self.window.config.getint('UI', 'log_font_size', fallback=16)
+                
+                # Reconfigure log view font with loaded size
+                self.window.configure_log_view_font()
 
                 splitter_sizes = self.window.config.get('UI', 'splitter_sizes', fallback=None)
                 QTimer.singleShot(100, lambda: self.restore_splitter_sizes(splitter_sizes))
@@ -68,6 +72,7 @@ class ConfigManager:
             self.window.config.add_section('UI')
         self.window.config.set('UI', 'auto_select_updated', str(self.window.auto_select_updated))
         self.window.config.set('UI', 'hipster_pipe_enabled', str(self.window.hipster_pipe_enabled))
+        self.window.config.set('UI', 'log_font_size', str(self.window.log_font_size))
 
         splitter_sizes = self.window.splitter.sizes()
         if splitter_sizes:
