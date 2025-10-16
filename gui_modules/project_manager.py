@@ -15,6 +15,9 @@ class ProjectManager:
     
     def __init__(self, main_window):
         self.window = main_window
+        self.loading_queue = []  # Queue for progressive loading
+        self.is_loading = False  # Flag to prevent concurrent loading
+        self.initial_load_done = False  # Flag to track initial load
     
     def update_projects(self, force_update=False):
         """Update all projects in the tree"""
@@ -24,36 +27,101 @@ class ProjectManager:
         if not self.window.project_items:
             self.window.tree.clear()
 
+        # Build the loading queue
+        projects_to_load = []
         for proj_id in self.window.projects:
             if proj_id in self.window.project_workers and not force_update:
                 if self.window.project_workers[proj_id].isRunning():
                     continue
+            projects_to_load.append(proj_id)
 
-            if proj_id not in self.window.project_items:
-                proj_item = QTreeWidgetItem(self.window.tree, [f"Chargement... (ID: {proj_id})"])
-                self.window.project_items[proj_id] = proj_item
-            else:
-                proj_item = self.window.project_items[proj_id]
-
-            if proj_id in self.window.project_workers:
-                worker = self.window.project_workers[proj_id]
-                if worker and worker.isRunning():
-                    try:
-                        worker.finished.disconnect()
-                        worker.error.disconnect()
-                        worker.stop()
-                        worker.wait()
-                    except:
-                        pass
-
-            worker = HttpWorker(self.fetch_project_data, proj_id)
-            worker.finished.connect(lambda data, pid=proj_id: self.on_project_data_loaded(data, pid))
-            worker.error.connect(lambda error, pid=proj_id: self.on_project_error(error, pid))
-            worker.start()
-
-            self.window.project_workers[proj_id] = worker
+        # If this is the initial load, use progressive loading
+        if not self.initial_load_done and projects_to_load:
+            self.loading_queue = projects_to_load
+            self.initial_load_done = True
+            self.window.is_initial_loading = True
+            # Show loading message in tree
+            if not self.window.project_items:
+                loading_item = QTreeWidgetItem(self.window.tree, ["Chargement des projets en cours..."])
+                loading_item.setForeground(0, QColor('yellow'))
+            self._load_next_project()
+        else:
+            # For subsequent updates, load all at once (but still async)
+            for proj_id in projects_to_load:
+                self._start_project_worker(proj_id)
 
         # Remove projects no longer selected
+        self._cleanup_removed_projects()
+
+    def _load_next_project(self):
+        """Load the next project in the queue progressively"""
+        if not self.loading_queue:
+            self.is_loading = False
+            # Remove loading message
+            for i in range(self.window.tree.topLevelItemCount()):
+                item = self.window.tree.topLevelItem(i)
+                if item and item.text(0) == "Chargement des projets en cours...":
+                    self.window.tree.takeTopLevelItem(i)
+                    break
+            # Signal that initial loading is complete
+            self.window.is_initial_loading = False
+            return
+
+        if self.is_loading:
+            return
+
+        self.is_loading = True
+        proj_id = self.loading_queue.pop(0)
+        self._start_project_worker(proj_id, progressive=True)
+
+    def _start_project_worker(self, proj_id, progressive=False):
+        """Start a worker to load a single project"""
+        if proj_id not in self.window.project_items:
+            proj_item = QTreeWidgetItem(self.window.tree, [f"Chargement... (ID: {proj_id})"])
+            self.window.project_items[proj_id] = proj_item
+        else:
+            proj_item = self.window.project_items[proj_id]
+
+        if proj_id in self.window.project_workers:
+            worker = self.window.project_workers[proj_id]
+            if worker and worker.isRunning():
+                try:
+                    worker.finished.disconnect()
+                    worker.error.disconnect()
+                    worker.stop()
+                    worker.wait()
+                except:
+                    pass
+
+        worker = HttpWorker(self.fetch_project_data, proj_id)
+        
+        if progressive:
+            worker.finished.connect(lambda data, pid=proj_id: self._on_progressive_load_done(data, pid))
+            worker.error.connect(lambda error, pid=proj_id: self._on_progressive_load_error(error, pid))
+        else:
+            worker.finished.connect(lambda data, pid=proj_id: self.on_project_data_loaded(data, pid))
+            worker.error.connect(lambda error, pid=proj_id: self.on_project_error(error, pid))
+        
+        self.window.project_workers[proj_id] = worker
+        worker.start()
+
+    def _on_progressive_load_done(self, data, proj_id):
+        """Called when a project loads during progressive loading"""
+        self.on_project_data_loaded(data, proj_id)
+        self.is_loading = False
+        # Load next project after a short delay to keep UI responsive
+        QTimer.singleShot(100, self._load_next_project)
+
+    def _on_progressive_load_error(self, error, proj_id):
+        """Called when a project fails during progressive loading"""
+        self.on_project_error(error, proj_id)
+        self.is_loading = False
+        # Continue with next project
+        QTimer.singleShot(100, self._load_next_project)
+    
+
+    def _cleanup_removed_projects(self):
+        """Remove projects that are no longer selected"""
         to_remove = []
         for proj_id, item in self.window.project_items.items():
             if proj_id not in self.window.projects:

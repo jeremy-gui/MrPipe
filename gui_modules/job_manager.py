@@ -19,6 +19,11 @@ class JobManager:
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
+        
+        # Check if gitlab_manager is initialized
+        if not self.window.gitlab_manager:
+            self.window.log_view.setPlainText("GitLab non configuré. Veuillez configurer l'application dans le menu Settings.")
+            return
 
         self.window.right_stack.setCurrentIndex(0)
         self.window.current_manual_job = None
@@ -39,9 +44,12 @@ class JobManager:
         self.window.log_view.setPlainText("Chargement des logs en cours...")
         self.window.loading_animation.update_display()
 
-        self.window.job_data_worker = JobDataWorker(self.window.gitlab_manager, proj_id, job_id)
-        self.window.job_data_worker.data_ready.connect(self.on_job_data_received)
-        self.window.job_data_worker.start()
+        try:
+            self.window.job_data_worker = JobDataWorker(self.window.gitlab_manager, proj_id, job_id)
+            self.window.job_data_worker.data_ready.connect(self.on_job_data_received)
+            self.window.job_data_worker.start()
+        except Exception as e:
+            self.window.log_view.setPlainText(f"Erreur lors du chargement du job: {str(e)}")
 
     def on_job_data_received(self, job_data):
         """Called when job data (status and logs) is received"""

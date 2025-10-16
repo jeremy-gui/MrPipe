@@ -61,6 +61,7 @@ class MainWindow(QMainWindow):
         self._loading_state = 0  # For loading animation
         self._loading_text = "·"  # For loading animation
         self.hipster_pipe_enabled = False
+        self.is_initial_loading = False  # Flag to track initial loading state
         
         # Initialize managers
         self.config_manager = ConfigManager(self)
@@ -233,6 +234,18 @@ class MainWindow(QMainWindow):
         super().moveEvent(event)
 
     def show_config(self):
+        # Warn if loading is in progress
+        if self.is_initial_loading:
+            reply = QMessageBox.question(
+                self,
+                "Chargement en cours",
+                "Un chargement de projets est en cours. Voulez-vous continuer ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+        
         dialog = ConfigDialog(self, self.config, self.config_file)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             url = dialog.get_url()
@@ -245,6 +258,9 @@ class MainWindow(QMainWindow):
                 self.config_manager.save_config(url, token, selected_projects)
                 self.projects = selected_projects
                 self.gitlab_manager = GitLabManager(url, token)
+                # Reset initial load flag to trigger progressive loading again
+                self.project_manager.initial_load_done = False
+                self.is_initial_loading = True
                 self.project_manager.update_projects()
             except Exception as e:
                 self.log_view.setPlainText(f"Erreur de configuration : {str(e)}")
@@ -310,15 +326,26 @@ class MainWindow(QMainWindow):
         # Arrêter tous les workers en cours d'exécution
         if self.log_worker:
             self.log_worker.stop()
-            # self.log_worker.wait()  # Retiré pour éviter le blocage
+            if self.log_worker.isRunning():
+                self.log_worker.wait(1000)
+            self.log_worker.deleteLater()
+            self.log_worker = None
 
         # sync_worker is now handled in ConfigDialog
 
         if self.launch_worker:
             self.launch_worker.stop()
+            if self.launch_worker.isRunning():
+                self.launch_worker.wait(1000)
+            self.launch_worker.deleteLater()
+            self.launch_worker = None
 
         if self.job_data_worker:
             self.job_data_worker.stop()
+            if self.job_data_worker.isRunning():
+                self.job_data_worker.wait(1000)
+            self.job_data_worker.deleteLater()
+            self.job_data_worker = None
 
         # Arrêter les timers
         if hasattr(self, 'timer') and self.timer:
@@ -332,22 +359,28 @@ class MainWindow(QMainWindow):
         if hasattr(self, '_move_timer') and self._move_timer:
             self._move_timer.stop()
 
-        for worker in self.project_workers.values():
-            if worker and worker.isRunning():
+        # Arrêter tous les workers de projet
+        for worker in list(self.project_workers.values()):
+            if worker:
                 try:
-                    worker.finished.disconnect()
-                    worker.error.disconnect()
                     worker.stop()
-                    # worker.wait()  # Retiré pour éviter le blocage
+                    if worker.isRunning():
+                        worker.wait(1000)  # Wait max 1 second
+                    worker.deleteLater()
                 except:
                     pass
+        self.project_workers.clear()
 
         # Arrêter tous les workers de statut des jobs
-        for worker in self.job_status_workers.values():
-            if worker and worker.isRunning():
-                worker.stop()
-                # worker.wait() optionnel
-
+        for worker in list(self.job_status_workers.values()):
+            if worker:
+                try:
+                    worker.stop()
+                    if worker.isRunning():
+                        worker.wait(1000)  # Wait max 1 second
+                    worker.deleteLater()
+                except:
+                    pass
         self.job_status_workers.clear()
 
         # Arrêter toutes les animations de jobs

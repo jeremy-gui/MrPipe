@@ -26,7 +26,12 @@ class HttpWorker(QThread):
                 self.finished.emit(result)
         except Exception as e:
             if self._is_running:
-                self.error.emit(f"Erreur: {str(e)}")
+                import traceback
+                error_msg = f"Erreur: {str(e)}"
+                # Log full traceback for debugging
+                print(f"Worker error: {error_msg}")
+                print(traceback.format_exc())
+                self.error.emit(error_msg)
 
     def stop(self):
         self._is_running = False
