@@ -44,7 +44,12 @@ class ConfigManager:
                 self.window.configure_log_view_font()
 
                 splitter_sizes = self.window.config.get('UI', 'splitter_sizes', fallback=None)
-                QTimer.singleShot(100, lambda: self.restore_splitter_sizes(splitter_sizes))
+                if splitter_sizes:
+                    if not hasattr(self.window, 'restore_splitter_timer'):
+                        self.window.restore_splitter_timer = QTimer(self.window)
+                        self.window.restore_splitter_timer.setSingleShot(True)
+                    self.window.restore_splitter_timer.timeout.connect(lambda: self.restore_splitter_sizes(splitter_sizes))
+                    self.window.restore_splitter_timer.start(100)
 
                 geometry_b64 = self.window.config.get('UI', 'window_geometry', fallback=None)
                 if geometry_b64:

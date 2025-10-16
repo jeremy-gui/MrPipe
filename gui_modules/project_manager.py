@@ -82,13 +82,13 @@ class ProjectManager:
             self.window.select_job_timer.start(200)
             
             # Open config dialog if it was requested during loading
-            if self.window.pending_config_dialog:
+            if hasattr(self.window, 'pending_config_dialog') and self.window.pending_config_dialog:
                 self.window.pending_config_dialog = False
                 # Use QTimer to open dialog after event loop processes
                 if not hasattr(self.window, 'open_config_timer'):
                     self.window.open_config_timer = QTimer(self.window)
                     self.window.open_config_timer.setSingleShot(True)
-                    self.window.open_config_timer.timeout.connect(self.window._open_config_dialog)
+                    self.window.open_config_timer.timeout.connect(self._safe_open_config_dialog)
                 self.window.open_config_timer.start(300)
             return
 
@@ -144,7 +144,11 @@ class ProjectManager:
             self.is_loading = False
             # Load next project after a short delay to keep UI responsive
             if hasattr(self.window, 'project_manager'):
-                QTimer.singleShot(100, self._load_next_project)
+                if not hasattr(self.window, 'next_project_timer'):
+                    self.window.next_project_timer = QTimer(self.window)
+                    self.window.next_project_timer.setSingleShot(True)
+                    self.window.next_project_timer.timeout.connect(self._load_next_project)
+                self.window.next_project_timer.start(100)
 
     def _on_progressive_load_error(self, error, proj_id):
         """Called when a project fails during progressive loading"""
@@ -156,7 +160,16 @@ class ProjectManager:
             self.is_loading = False
             # Continue with next project
             if hasattr(self.window, 'project_manager'):
-                QTimer.singleShot(100, self._load_next_project)
+                if not hasattr(self.window, 'next_project_timer'):
+                    self.window.next_project_timer = QTimer(self.window)
+                    self.window.next_project_timer.setSingleShot(True)
+                    self.window.next_project_timer.timeout.connect(self._load_next_project)
+                self.window.next_project_timer.start(100)
+    
+    def _safe_open_config_dialog(self):
+        """Safely open config dialog with checks"""
+        if hasattr(self.window, '_open_config_dialog') and self.window.isVisible():
+            self.window._open_config_dialog()
     
     def _select_most_recent_job(self):
         """Select and load the most recent job after initial loading"""
@@ -362,4 +375,10 @@ class ProjectManager:
         """Called on project loading error"""
         if proj_id in self.window.project_items:
             self.window.project_items[proj_id].setText(0, f"Erreur: {error}")
-        QTimer.singleShot(60000, lambda: self.window.project_manager.update_projects(force_update=True))
+        
+        # Retry after 60 seconds
+        if not hasattr(self.window, 'retry_update_timer'):
+            self.window.retry_update_timer = QTimer(self.window)
+            self.window.retry_update_timer.setSingleShot(True)
+            self.window.retry_update_timer.timeout.connect(lambda: self.update_projects(force_update=True))
+        self.window.retry_update_timer.start(6000)

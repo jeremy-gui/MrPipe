@@ -251,7 +251,14 @@ class MainWindow(QMainWindow):
     
     def _open_config_dialog(self):
         """Open the configuration dialog"""
-        dialog = ConfigDialog(self, self.config, self.config_file)
+        # Safety check: don't open if window is closing
+        if not self.isVisible() or not hasattr(self, 'config'):
+            return
+        
+        try:
+            dialog = ConfigDialog(self, self.config, self.config_file)
+        except:
+            return
         if dialog.exec() == QDialog.DialogCode.Accepted:
             url = dialog.get_url()
             token = dialog.get_token()
@@ -326,6 +333,14 @@ class MainWindow(QMainWindow):
     def _on_job_status_worker_finished(self, key):
         """Called when a JobStatusWorker finishes"""
         if key in self.job_status_workers:
+            worker = self.job_status_workers[key]
+            # S'assurer que le worker est bien arrêté
+            if worker and worker.isRunning():
+                worker.stop()
+                worker.wait(500)
+                if worker.isRunning():
+                    worker.terminate()
+                    worker.wait()
             del self.job_status_workers[key]
 
     # Filter and limit methods removed - now handled in ConfigDialog
@@ -352,6 +367,9 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         # Sauvegarder automatiquement la géométrie et les proportions avant de fermer
         self.config_manager.auto_save_geometry()
+        
+        # Annuler toute ouverture de dialogue en attente
+        self.pending_config_dialog = False
         
         # Arrêter le chargement progressif immédiatement
         if hasattr(self, 'project_manager'):
@@ -402,6 +420,12 @@ class MainWindow(QMainWindow):
             self.select_job_timer.stop()
         if hasattr(self, 'open_config_timer') and self.open_config_timer:
             self.open_config_timer.stop()
+        if hasattr(self, 'restore_splitter_timer') and self.restore_splitter_timer:
+            self.restore_splitter_timer.stop()
+        if hasattr(self, 'next_project_timer') and self.next_project_timer:
+            self.next_project_timer.stop()
+        if hasattr(self, 'retry_update_timer') and self.retry_update_timer:
+            self.retry_update_timer.stop()
 
         # Arrêter les timers de sauvegarde automatique
         if hasattr(self, '_resize_timer') and self._resize_timer:

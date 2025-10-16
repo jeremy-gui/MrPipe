@@ -133,7 +133,17 @@ class LogWorker(QThread):
                     self.error_occurred.emit(str(e))
                     logs_loaded = True
 
+            # Vérifier si le job est terminé APRES avoir chargé les logs
             if self._job_status in ['success', 'failed', 'canceled', 'skipped']:
+                # Charger les logs une dernière fois pour être sûr d'avoir tout
+                if logs_loaded:
+                    try:
+                        trace = self.gitlab_manager.get_job_trace(self.project_id, self.job_id)
+                        self._on_log_received(trace)
+                        # Attendre un peu pour que les logs soient bien émis
+                        self.msleep(100)
+                    except:
+                        pass
                 self.job_finished.emit()
                 self._is_running = False
                 break

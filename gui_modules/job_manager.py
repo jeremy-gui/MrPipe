@@ -49,6 +49,8 @@ class JobManager:
         proj_id, job_id = data
         self.window.current_job = (proj_id, job_id)
 
+        # Réinitialiser le contenu des logs pour forcer la mise à jour
+        self.window.last_log_content = ""
         self.window.log_view.setPlainText("Chargement des logs en cours...")
         self.window.loading_animation.update_display()
 
@@ -89,10 +91,12 @@ class JobManager:
         print(f"Taille des logs: {len(log_content) if log_content else 0} caractères")
 
         if log_content:
+            # Afficher les logs
             self.window.log_display.update_log_display(log_content)
+            
             if self.window._loading_active:
+                # Job en cours - démarrer le suivi en temps réel
                 self.window.loading_timer.start(500)
-            if self.window._loading_active:
                 print("Démarrage du suivi en temps réel...")
                 self.window.log_worker = LogWorker(self.window.gitlab_manager, proj_id, job_id)
                 self.window.log_worker.log_ready.connect(self.window.log_display.update_log_display)
@@ -100,6 +104,7 @@ class JobManager:
                 self.window.log_worker.job_finished.connect(self.on_job_finished)
                 self.window.log_worker.start()
             else:
+                # Job terminé - ajouter le message de statut
                 print("Le job est terminé, pas de suivi en temps réel nécessaire")
                 # Arrêter l'animation de chargement
                 self.window.loading_timer.stop()
