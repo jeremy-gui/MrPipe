@@ -163,15 +163,18 @@ class MainWindow(QMainWindow):
         config_action.triggered.connect(self.show_config)
         settings_menu.addAction(config_action)
 
-        # Quit action
-        quit_action = QAction("Quit", self)
-        quit_action.triggered.connect(self.close)
-        settings_menu.addAction(quit_action)
-
         # About action
         about_action = QAction("About", self)
         about_action.triggered.connect(self.show_about)
         settings_menu.addAction(about_action)
+
+        # Separator
+        settings_menu.addSeparator()
+
+        # Quit action
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(self.close)
+        settings_menu.addAction(quit_action)
 
         # Apply dark mode stylesheet
         self.setStyleSheet(get_dark_mode_stylesheet())

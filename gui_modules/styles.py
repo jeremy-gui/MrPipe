@@ -120,7 +120,18 @@ def get_dark_mode_stylesheet():
         background-color: #404040;
     }
 
-    /* Checkboxes */
+    /* QListWidget check indicators */
+    QListWidget::indicator {
+        background-color: #404040;
+        border: 1px solid #555555;
+        width: 16px;
+        height: 16px;
+    }
+
+    QListWidget::indicator:checked {
+        background-color: #5cb3ff;
+        border: 1px solid #5cb3ff;
+    }
     QCheckBox {
         color: #ffffff;
     }
@@ -223,6 +234,19 @@ def get_dialog_stylesheet():
     QDialog {
         background-color: #2b2b2b;
         color: white;
+    }
+
+    /* QListWidget check indicators */
+    QListWidget::indicator {
+        background-color: #404040;
+        border: 1px solid #555555;
+        width: 16px;
+        height: 16px;
+    }
+
+    QListWidget::indicator:checked {
+        background-color: #5cb3ff;
+        border: 1px solid #5cb3ff;
     }
     """
 
