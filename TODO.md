@@ -8,7 +8,8 @@
 - [ ] **Innactivité** : Après une longue période d'inactivité il n'y a plus de chargemetn des pipeline automatique
 
 ### Nouvelles fonctionnalités (feat)
-- [ ] **Timestamp pipeline** : Afficher le timestamp de création/exécution des pipelines
+- [x] **Timestamp pipeline** : Afficher le timestamp de création/exécution des pipelines + info tool sur job : date de mise à jour du job + date de création du job
+- [ ] **Delete pipeline** : Retirer une pipeline de l'affichage avec un petit icone poubelle à droite de la ligne
 - [ ] **Environnement cible** : Afficher l'environnement cible (target) des pipelines
 - [ ] **Bouton Clear** : Ajouter un bouton pour effacer l'affichage d'une pipeline
 - [ ] **Bouton Retry** : Implémenter un bouton pour relancer une pipeline

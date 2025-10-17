@@ -5,9 +5,52 @@ Project management utilities
 from PyQt6.QtWidgets import QTreeWidgetItem
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt, QTimer
+from datetime import datetime
 
 from .workers import HttpWorker, JobStatusWorker
 from .styles import TREE_FONT_SIZE_PROJECT, TREE_FONT_SIZE_PIPELINE
+
+
+def format_timestamp(timestamp_str):
+    """Format a timestamp string to a readable format"""
+    if not timestamp_str:
+        return ""
+    try:
+        # Parse ISO format timestamp
+        dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        # Format to readable format: DD/MM/YYYY HH:MM
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except Exception as e:
+        print(f"Error formatting timestamp {timestamp_str}: {e}")
+        return ""
+
+
+def format_job_tooltip(job):
+    """Format tooltip for a job with creation and update dates"""
+    try:
+        tooltip_parts = []
+        
+        if hasattr(job, 'created_at') and job.created_at:
+            created = format_timestamp(job.created_at)
+            if created:
+                tooltip_parts.append(f"Created: {created}")
+        
+        if hasattr(job, 'started_at') and job.started_at:
+            started = format_timestamp(job.started_at)
+            if started:
+                tooltip_parts.append(f"Started: {started}")
+        
+        if hasattr(job, 'finished_at') and job.finished_at:
+            finished = format_timestamp(job.finished_at)
+            if finished:
+                tooltip_parts.append(f"Finished: {finished}")
+        
+        if tooltip_parts:
+            return "\n".join(tooltip_parts)
+        return ""
+    except Exception as e:
+        print(f"Error formatting job tooltip: {e}")
+        return ""
 
 
 class ProjectManager:
@@ -283,15 +326,21 @@ class ProjectManager:
             if not jobs:
                 continue
 
+            # Format pipeline timestamp
+            pipeline_time = ""
+            if hasattr(pipeline, 'created_at') and pipeline.created_at:
+                pipeline_time = format_timestamp(pipeline.created_at)
+                pipeline_time = f" [{pipeline_time}]" if pipeline_time else ""
+            
             if pipeline.id in existing_pipeline_ids:
                 for i in range(proj_item.childCount()):
                     child = proj_item.child(i)
                     if child.text(0).startswith(f"Pipeline {pipeline.id}"):
                         current_text = child.text(0)
-                        expected_text = f"Pipeline {pipeline.id} - {pipeline.status}"
+                        expected_text = f"Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"
                         if current_text != expected_text:
                             child.setText(0, expected_text)
-                            self.update_pipeline_jobs(child, jobs, proj_id)
+                            self.update_pipeline_jobs(child, jobs, proj_id, pipeline)
 
                             font = child.font(0)
                             font.setBold(True)
@@ -300,7 +349,7 @@ class ProjectManager:
                             child.setForeground(0, QColor('white'))
                         break
             else:
-                pipeline_item = QTreeWidgetItem(proj_item, [f"Pipeline {pipeline.id} - {pipeline.status}"])
+                pipeline_item = QTreeWidgetItem(proj_item, [f"Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"])
 
                 font = pipeline_item.font(0)
                 font.setBold(True)
@@ -311,6 +360,11 @@ class ProjectManager:
                 for job in jobs:
                     job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
                     job_item.setData(0, Qt.ItemDataRole.UserRole, (proj_id, job.id))
+                    
+                    # Set tooltip with job timestamps
+                    tooltip = format_job_tooltip(job)
+                    if tooltip:
+                        job_item.setToolTip(0, tooltip)
 
                     # Import job_manager to set color
                     from .job_manager import JobColorManager
@@ -337,7 +391,7 @@ class ProjectManager:
             if not proj_item.isExpanded():
                 proj_item.setExpanded(True)
 
-    def update_pipeline_jobs(self, pipeline_item, jobs, proj_id):
+    def update_pipeline_jobs(self, pipeline_item, jobs, proj_id, pipeline=None):
         """Update jobs in an existing pipeline"""
         existing_job_ids = set()
         for i in range(pipeline_item.childCount()):
@@ -358,10 +412,20 @@ class ProjectManager:
                             child.setText(0, expected_text)
                             from .job_manager import JobColorManager
                             JobColorManager.set_job_color(self.window, child, job.status)
+                        
+                        # Update tooltip with job timestamps
+                        tooltip = format_job_tooltip(job)
+                        if tooltip:
+                            child.setToolTip(0, tooltip)
                         break
             else:
                 job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
                 job_item.setData(0, Qt.ItemDataRole.UserRole, (proj_id, job.id))
+                
+                # Set tooltip with job timestamps
+                tooltip = format_job_tooltip(job)
+                if tooltip:
+                    job_item.setToolTip(0, tooltip)
 
                 from .job_manager import JobColorManager
                 JobColorManager.set_job_color(self.window, job_item, job.status)
