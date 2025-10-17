@@ -18,6 +18,7 @@ class ProjectManager:
         self.loading_queue = []  # Queue for progressive loading
         self.is_loading = False  # Flag to prevent concurrent loading
         self.initial_load_done = False  # Flag to track initial load
+        self.manually_collapsed_projects = set()  # Track projects manually collapsed by user
     
     def update_projects(self, force_update=False):
         """Update all projects in the tree"""
@@ -331,8 +332,10 @@ class ProjectManager:
                     self.window.tree.setCurrentItem(first_job_item)
                     self.window.job_manager.on_item_clicked(first_job_item, 0)
 
-        if not proj_item.isExpanded():
-            proj_item.setExpanded(True)
+        # Only expand if not manually collapsed by user
+        if proj_id not in self.manually_collapsed_projects:
+            if not proj_item.isExpanded():
+                proj_item.setExpanded(True)
 
     def update_pipeline_jobs(self, pipeline_item, jobs, proj_id):
         """Update jobs in an existing pipeline"""
@@ -382,3 +385,24 @@ class ProjectManager:
             self.window.retry_update_timer.setSingleShot(True)
             self.window.retry_update_timer.timeout.connect(lambda: self.update_projects(force_update=True))
         self.window.retry_update_timer.start(6000)
+
+    def on_project_collapsed(self, item):
+        """Track when user manually collapses a project"""
+        # Check if this is a project item (top level)
+        if self.window.tree.indexOfTopLevelItem(item) != -1:
+            # Find the project ID
+            for proj_id, proj_item in self.window.project_items.items():
+                if proj_item == item:
+                    self.manually_collapsed_projects.add(proj_id)
+                    break
+
+    def on_project_expanded(self, item):
+        """Track when user manually expands a project"""
+        # Check if this is a project item (top level)
+        if self.window.tree.indexOfTopLevelItem(item) != -1:
+            # Find the project ID
+            for proj_id, proj_item in self.window.project_items.items():
+                if proj_item == item:
+                    # Remove from collapsed set when user expands it
+                    self.manually_collapsed_projects.discard(proj_id)
+                    break

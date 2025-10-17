@@ -3,11 +3,13 @@
 ## Améliorations à implémenter
 
 ### Corrections (fix)
-- [ ] **Fermeture de projet** : Empêcher l'expansion automatique d'un projet lors de sa mise à jour s'il a été fermé manuellement par l'utilisateur
+- [x] **Fermeture de projet** : Empêcher l'expansion automatique d'un projet lors de sa mise à jour s'il a été fermé manuellement par l'utilisateur
 - [ ] **Hipster pipe** : Ne pas afficher l'animation de succès pour une pipeline qui n'est pas actuellement sélectionnée
 - [ ] **Innactivité** : Après une longue période d'inactivité il n'y a plus de chargemetn des pipeline automatique
 
 ### Nouvelles fonctionnalités (feat)
+- [ ] **Timestamp pipeline** : Afficher le timestamp de création/exécution des pipelines
+- [ ] **Environnement cible** : Afficher l'environnement cible (target) des pipelines
 - [ ] **Bouton Clear** : Ajouter un bouton pour effacer l'affichage d'une pipeline
 - [ ] **Bouton Retry** : Implémenter un bouton pour relancer une pipeline
 - [ ] **Menu contextuel** : Ajouter un menu contextuel (clic droit) avec des actions rapides

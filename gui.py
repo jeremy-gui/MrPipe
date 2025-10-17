@@ -123,6 +123,8 @@ class MainWindow(QMainWindow):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("Projects and Jobs")
         self.tree.itemClicked.connect(lambda item, col: self.job_manager.on_item_clicked(item, col))
+        self.tree.itemCollapsed.connect(lambda item: self.project_manager.on_project_collapsed(item))
+        self.tree.itemExpanded.connect(lambda item: self.project_manager.on_project_expanded(item))
         self.tree.setMinimumWidth(200)  # Largeur minimale pour éviter que ce soit trop petit
         self.splitter.addWidget(self.tree)
         self.log_view = QTextEdit()
