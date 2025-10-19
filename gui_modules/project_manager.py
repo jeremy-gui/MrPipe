@@ -307,17 +307,13 @@ class ProjectManager:
         font.setPointSize(TREE_FONT_SIZE_PROJECT)
         proj_item.setFont(0, font)
         proj_item.setForeground(0, QColor('white'))
-
-        existing_pipeline_ids = set()
+        existing_pipeline_ids = {}  # Changed to dict to map id -> item
         for i in range(proj_item.childCount()):
             child = proj_item.child(i)
-            text = child.text(0)
-            if text.startswith("Pipeline "):
-                try:
-                    pipeline_id = int(text.split()[1])
-                    existing_pipeline_ids.add(pipeline_id)
-                except (ValueError, IndexError):
-                    pass
+            # Get pipeline ID from item data
+            pipeline_id = child.data(0, Qt.ItemDataRole.UserRole + 1)
+            if pipeline_id is not None:
+                existing_pipeline_ids[pipeline_id] = child
 
         for pipeline_info in pipelines_data:
             pipeline = pipeline_info['pipeline']
@@ -326,30 +322,36 @@ class ProjectManager:
             if not jobs:
                 continue
 
+            # Format pipeline environment target (ref/branch)
+            pipeline_env = ""
+            if hasattr(pipeline, 'ref') and pipeline.ref:
+                pipeline_env = f" [{pipeline.ref}]"
+            
             # Format pipeline timestamp
             pipeline_time = ""
             if hasattr(pipeline, 'created_at') and pipeline.created_at:
                 pipeline_time = format_timestamp(pipeline.created_at)
                 pipeline_time = f" [{pipeline_time}]" if pipeline_time else ""
-            
-            if pipeline.id in existing_pipeline_ids:
-                for i in range(proj_item.childCount()):
-                    child = proj_item.child(i)
-                    if child.text(0).startswith(f"Pipeline {pipeline.id}"):
-                        current_text = child.text(0)
-                        expected_text = f"Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"
-                        if current_text != expected_text:
-                            child.setText(0, expected_text)
-                            self.update_pipeline_jobs(child, jobs, proj_id, pipeline)
 
-                            font = child.font(0)
-                            font.setBold(True)
-                            font.setPointSize(TREE_FONT_SIZE_PIPELINE)
-                            child.setFont(0, font)
-                            child.setForeground(0, QColor('white'))
-                        break
+            if pipeline.id in existing_pipeline_ids:
+                child = existing_pipeline_ids[pipeline.id]
+                current_text = child.text(0)
+                expected_text = f"{pipeline_env} Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"
+                if current_text != expected_text:
+                    child.setText(0, expected_text)
+                    self.update_pipeline_jobs(child, jobs, proj_id, pipeline)
+
+                    font = child.font(0)
+                    font.setBold(True)
+                    font.setPointSize(TREE_FONT_SIZE_PIPELINE)
+                    child.setFont(0, font)
+                    child.setForeground(0, QColor('white'))
             else:
-                pipeline_item = QTreeWidgetItem(proj_item, [f"Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"])
+                pipeline_item = QTreeWidgetItem(proj_item,
+                                                [f"{pipeline_env} Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"])
+
+                # Store pipeline ID in item data
+                pipeline_item.setData(0, Qt.ItemDataRole.UserRole + 1, pipeline.id)
 
                 font = pipeline_item.font(0)
                 font.setBold(True)
@@ -360,7 +362,7 @@ class ProjectManager:
                 for job in jobs:
                     job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
                     job_item.setData(0, Qt.ItemDataRole.UserRole, (proj_id, job.id))
-                    
+
                     # Set tooltip with job timestamps
                     tooltip = format_job_tooltip(job)
                     if tooltip:
@@ -373,7 +375,8 @@ class ProjectManager:
                     key = (proj_id, job.id)
                     if key not in self.window.job_status_workers:
                         worker = JobStatusWorker(self.window.gitlab_manager, proj_id, job.id, job_item, key)
-                        worker.status_updated.connect(lambda status: JobColorManager.on_job_status_updated(self.window, status))
+                        worker.status_updated.connect(
+                            lambda status: JobColorManager.on_job_status_updated(self.window, status))
                         worker.finished_signal.connect(self.window._on_job_status_worker_finished)
                         worker.start()
                         self.window.job_status_workers[key] = worker
@@ -385,7 +388,6 @@ class ProjectManager:
                     first_job_item = pipeline_item.child(0)
                     self.window.tree.setCurrentItem(first_job_item)
                     self.window.job_manager.on_item_clicked(first_job_item, 0)
-
         # Only expand if not manually collapsed by user
         if proj_id not in self.manually_collapsed_projects:
             if not proj_item.isExpanded():

@@ -10,7 +10,7 @@
 ### Nouvelles fonctionnalités (feat)
 - [x] **Timestamp pipeline** : Afficher le timestamp de création/exécution des pipelines + info tool sur job : date de mise à jour du job + date de création du job
 - [ ] **Delete pipeline** : Retirer une pipeline de l'affichage avec un petit icone poubelle à droite de la ligne
-- [ ] **Environnement cible** : Afficher l'environnement cible (target) des pipelines
+- [x] **Environnement cible** : Afficher l'environnement cible (target) des pipelines juste avant le timestamp
 - [ ] **Bouton Clear** : Ajouter un bouton pour effacer l'affichage d'une pipeline
 - [ ] **Bouton Retry** : Implémenter un bouton pour relancer une pipeline
 - [ ] **Menu contextuel** : Ajouter un menu contextuel (clic droit) avec des actions rapides
