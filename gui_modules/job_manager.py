@@ -188,15 +188,93 @@ class JobManager:
         else:
             return f"{secs}s"
     
+    def _handle_project_click(self, item):
+        """Handle click on a project item"""
+        # Clear logs and show project info in header
+        self.window.log_view.setPlainText("")
+        
+        # Parse project name from item text
+        item_text = item.text(0)
+        # Format is: "Project Name (ID: 12345)"
+        if " (ID: " in item_text:
+            project_name = item_text.split(" (ID: ")[0]
+        else:
+            project_name = item_text
+        
+        # Update header with project info only
+        self.window.log_header.update_info(
+            project_name=project_name,
+            env_name="",
+            job_name="",
+            status="",
+            date="",
+            duration="",
+            is_pipeline=False
+        )
+    
+    def _handle_pipeline_click(self, item, pipeline_id):
+        """Handle click on a pipeline item"""
+        # Clear logs and show pipeline info in header
+        self.window.log_view.setPlainText("")
+        
+        # Get project info from parent
+        parent = item.parent()
+        if parent:
+            parent_text = parent.text(0)
+            if " (ID: " in parent_text:
+                project_name = parent_text.split(" (ID: ")[0]
+            else:
+                project_name = parent_text
+        else:
+            project_name = ""
+        
+        # Parse pipeline info from item text
+        item_text = item.text(0)
+        # Format can be: "Pipeline 123 • status • time" or "[env]Pipeline 123 • status • time"
+        
+        # Extract environment if present
+        env_name = ""
+        if item_text.startswith("[") and "]" in item_text:
+            env_name = item_text[1:item_text.index("]")]
+            item_text = item_text[item_text.index("]")+1:]
+        
+        # Extract status and time
+        parts = item_text.split(" • ")
+        pipeline_info = parts[0] if parts else item_text  # "Pipeline 123"
+        status = parts[1] if len(parts) > 1 else ""
+        date = parts[2] if len(parts) > 2 else ""
+        
+        # Update header with pipeline info
+        self.window.log_header.update_info(
+            project_name=project_name,
+            env_name=env_name,
+            job_name="",
+            status=status,
+            date=date,
+            duration="",
+            is_pipeline=True
+        )
+    
     def on_item_clicked(self, item, column):
         """Handle tree item click"""
-        data = item.data(0, Qt.ItemDataRole.UserRole)
-        if not data:
-            return
-        
         # Check if gitlab_manager is initialized
         if not self.window.gitlab_manager:
             self.window.log_view.setPlainText("GitLab non configuré. Veuillez configurer l'application dans le menu Settings.")
+            return
+        
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        
+        # Check if this is a pipeline item (has pipeline_id in UserRole + 1)
+        pipeline_id = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        
+        # If no job data but has pipeline_id, it's a pipeline
+        if not data and pipeline_id:
+            self._handle_pipeline_click(item, pipeline_id)
+            return
+        
+        # If no data at all, it's a project
+        if not data:
+            self._handle_project_click(item)
             return
 
         self.window.right_stack.setCurrentIndex(0)
@@ -227,6 +305,33 @@ class JobManager:
         self.window.last_log_content = ""
         self.window.log_view.setPlainText("Chargement des logs en cours...")
         self.window.loading_animation.update_display()
+        
+        # Update header immediately with available info from tree item
+        try:
+            project = self.window.gitlab_manager.get_project(proj_id)
+            project_name = project.name
+            
+            # Parse job info from tree item text
+            item_text = item.text(0)
+            # Format is: "job_name - status"
+            if " - " in item_text:
+                job_name, job_status = item_text.rsplit(" - ", 1)
+            else:
+                job_name = item_text
+                job_status = "unknown"
+            
+            # Update header with basic info immediately
+            self.window.log_header.update_info(
+                project_name=project_name,
+                env_name="",  # Will be updated when data loads
+                job_name=job_name,
+                status=job_status,
+                date="",  # Will be updated when data loads
+                duration="",  # Will be updated when data loads
+                is_pipeline=False
+            )
+        except Exception as e:
+            print(f"Error updating header immediately: {e}")
 
         try:
             self.window.job_data_worker = JobDataWorker(self.window.gitlab_manager, proj_id, job_id)

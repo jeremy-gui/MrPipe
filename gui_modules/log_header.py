@@ -2,7 +2,7 @@
 Log header widget displaying job/pipeline information
 """
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout, QFrame
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from .styles import (HEADER_PROJECT_FONT_SIZE, HEADER_JOB_FONT_SIZE, 
@@ -19,7 +19,14 @@ class LogHeader(QWidget):
         
     def setup_ui(self):
         """Setup the header UI"""
-        layout = QHBoxLayout(self)
+        # Main vertical layout to include separator
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # Header content container
+        header_content = QWidget()
+        layout = QHBoxLayout(header_content)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(10)
         
@@ -109,16 +116,37 @@ class LogHeader(QWidget):
         right_layout.addWidget(self.date_label)
         right_layout.addWidget(self.duration_label)
         
-        # Add containers to main layout
+        # Add containers to header content layout
         layout.addWidget(left_container)
         layout.addStretch()
         layout.addWidget(right_container)
         
-        # Set background
+        # Set header content background
+        header_content.setStyleSheet("""
+            QWidget {
+                background-color: #455a64;
+            }
+        """)
+        
+        # Create separator line
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFixedHeight(5)
+        separator.setStyleSheet("""
+            QFrame {
+                background-color: #00d9ff;
+                border: none;
+            }
+        """)
+        
+        # Add header content and separator to main layout
+        main_layout.addWidget(header_content)
+        main_layout.addWidget(separator)
+        
+        # Set main widget background
         self.setStyleSheet("""
             LogHeader {
                 background-color: #455a64;
-                border-bottom: 2px solid #0f3460;
             }
         """)
         
