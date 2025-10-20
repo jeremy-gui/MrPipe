@@ -552,13 +552,14 @@ class JobColorManager:
                         window.tree.setCurrentItem(worker.job_item)
                         window.job_manager.on_item_clicked(worker.job_item, 0)
 
-                    # Hipster Pipe: celebration when job goes from running to success
-                    # Only trigger if this is the currently selected job
-                    if status == 'success' and current_status == 'running' and window.hipster_pipe_enabled:
+                    # Hipster Pipe: celebration when job goes from running to success or fail
+                    # Only trigger if this is the currently selected job and Hipster Pipe is enabled
+                    if current_status == 'running' and status in ['success', 'failed'] and window.hipster_pipe_mode > 0:
                         # Check if this is the currently selected job
                         current_item = window.tree.currentItem()
                         if current_item == worker.job_item:
+                            video_type = 'success' if status == 'success' else 'fail'
                             print(f"Hipster Pipe triggered! Job {worker.job_id} went from {current_status} to {status}")
-                            window.hipster_animation.show_animation()
+                            window.hipster_animation.show_animation(video_type)
                         else:
-                            print(f"Hipster Pipe skipped: Job {worker.job_id} succeeded but is not currently selected")
+                            print(f"Hipster Pipe skipped: Job {worker.job_id} finished but is not currently selected")

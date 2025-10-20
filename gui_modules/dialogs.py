@@ -7,10 +7,12 @@ import configparser
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QListWidget, QListWidgetItem, QDialogButtonBox,
-    QCheckBox, QMessageBox, QTextEdit, QWidget, QSpinBox
+    QCheckBox, QMessageBox, QTextEdit, QWidget, QSpinBox, QRadioButton, QButtonGroup
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QPixmap
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 
 from .workers import ProjectSyncWorker
 from .styles import get_dialog_stylesheet, get_license_text_stylesheet
@@ -107,12 +109,30 @@ class ConfigDialog(QDialog):
         # Hipster Pipe option
         hipster_layout = QHBoxLayout()
         hipster_label = QLabel("Hipster Pipe:")
-        self.hipster_checkbox = QCheckBox()
-        self.hipster_checkbox.setChecked(
-            self.parent_window.hipster_pipe_enabled if hasattr(self.parent_window, 'hipster_pipe_enabled') else False
-        )
         hipster_layout.addWidget(hipster_label)
-        hipster_layout.addWidget(self.hipster_checkbox)
+        
+        # Radio buttons for Hipster Pipe mode
+        self.hipster_button_group = QButtonGroup()
+        self.hipster_no_radio = QRadioButton("No")
+        self.hipster_yes_radio = QRadioButton("Yes")
+        self.hipster_yes_sound_radio = QRadioButton("Yes with sound")
+        
+        self.hipster_button_group.addButton(self.hipster_no_radio, 0)
+        self.hipster_button_group.addButton(self.hipster_yes_radio, 1)
+        self.hipster_button_group.addButton(self.hipster_yes_sound_radio, 2)
+        
+        # Set current value
+        current_mode = self.parent_window.hipster_pipe_mode if hasattr(self.parent_window, 'hipster_pipe_mode') else 0
+        if current_mode == 0:
+            self.hipster_no_radio.setChecked(True)
+        elif current_mode == 1:
+            self.hipster_yes_radio.setChecked(True)
+        else:
+            self.hipster_yes_sound_radio.setChecked(True)
+        
+        hipster_layout.addWidget(self.hipster_no_radio)
+        hipster_layout.addWidget(self.hipster_yes_radio)
+        hipster_layout.addWidget(self.hipster_yes_sound_radio)
         hipster_layout.addStretch()
         layout.addLayout(hipster_layout)
 
@@ -218,8 +238,9 @@ class ConfigDialog(QDialog):
     def get_auto_select_updated(self):
         return self.auto_select_checkbox.isChecked()
 
-    def get_hipster_pipe_enabled(self):
-        return self.hipster_checkbox.isChecked()
+    def get_hipster_pipe_mode(self):
+        """Returns 0 for No, 1 for Yes, 2 for Yes with sound"""
+        return self.hipster_button_group.checkedId()
 
     def get_log_font_size(self):
         return self.font_size_spinbox.value()
@@ -244,6 +265,8 @@ class AboutDialog(QDialog):
         self.get_resource_path = get_resource_path_func
         self.setWindowTitle("À propos de Mr. Pipe")
         self.setFixedSize(600, 400)
+        self.media_player = None
+        self.audio_output = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -290,15 +313,27 @@ class AboutDialog(QDialog):
 
         left_layout.addStretch()
 
-        # Right side: splash screen image
+        # Right side: video
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
 
-        splash_pixmap = QPixmap(self.get_resource_path("assets/image.png"))
-        splash_label = QLabel()
-        splash_label.setPixmap(splash_pixmap.scaled(252, 252, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        splash_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(splash_label)
+        # Create video widget
+        video_widget = QVideoWidget()
+        video_widget.setFixedSize(252, 252)
+        right_layout.addWidget(video_widget)
+
+        # Create media player
+        self.audio_output = QAudioOutput()
+        self.audio_output.setMuted(True)  # Mute the video
+        self.media_player = QMediaPlayer()
+        self.media_player.setAudioOutput(self.audio_output)
+        self.media_player.setVideoOutput(video_widget)
+        
+        # Load and play video
+        video_path = self.get_resource_path("assets/about.mp4")
+        self.media_player.setSource(QUrl.fromLocalFile(video_path))
+        self.media_player.setLoops(QMediaPlayer.Loops.Infinite)  # Loop indefinitely
+        self.media_player.play()
 
         layout.addWidget(left_widget)
         layout.addWidget(right_widget)

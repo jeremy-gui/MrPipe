@@ -4,8 +4,9 @@ UI helper utilities
 
 import os
 import sys
+import random
 from PyQt6.QtCore import QUrl
-from PyQt6.QtMultimedia import QMediaPlayer
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 
 
@@ -27,15 +28,39 @@ class HipsterPipeAnimation:
     
     def __init__(self, main_window):
         self.window = main_window
+        self.audio_output = None
     
-    def show_animation(self):
-        """Display the Hipster Pipe celebration video"""
-        print(f"_show_hipster_pipe_animation called. hipster_pipe_enabled: {self.window.hipster_pipe_enabled}")
+    def show_animation(self, video_type='success'):
+        """Display the Hipster Pipe video
+        
+        Args:
+            video_type: 'success' for success videos, 'fail' for fail video
+        """
+        print(f"show_animation called. hipster_pipe_mode: {self.window.hipster_pipe_mode}, video_type: {video_type}")
+        
+        # Check if Hipster Pipe is enabled (mode > 0), except for 'etonne' which plays on activation
+        if self.window.hipster_pipe_mode == 0 and video_type != 'etonne':
+            print("Hipster Pipe disabled, skipping animation")
+            return
+            
         if hasattr(self.window, 'hipster_video_widget') and self.window.hipster_video_widget:
             print("Animation already in progress, skipping")
             return
 
-        video_path = UIHelpers.get_resource_path("assets/animation.mp4")
+        # Select video based on type
+        if video_type == 'success':
+            # Randomly select one of the success videos
+            success_videos = ['success-1.mp4', 'success-2.mp4', 'success-3.mp4']
+            video_file = random.choice(success_videos)
+        elif video_type == 'fail':
+            video_file = 'fail.mp4'
+        elif video_type == 'etonne':
+            video_file = 'etonne.mp4'
+        else:
+            print(f"Unknown video type: {video_type}")
+            return
+        
+        video_path = UIHelpers.get_resource_path(f"assets/{video_file}")
         if not os.path.exists(video_path):
             print(f"Vidéo {video_path} non trouvée, pas d'animation Hipster Pipe")
             return
@@ -46,7 +71,13 @@ class HipsterPipeAnimation:
         self.window.hipster_video_widget.setGeometry(50, 50, 500, 300)
         self.window.hipster_video_widget.raise_()
 
+        # Setup audio output
+        self.audio_output = QAudioOutput()
+        # Mute if mode is 1 (Yes without sound), unmute if mode is 2 (Yes with sound)
+        self.audio_output.setMuted(self.window.hipster_pipe_mode == 1)
+        
         self.window.hipster_media_player = QMediaPlayer()
+        self.window.hipster_media_player.setAudioOutput(self.audio_output)
         self.window.hipster_media_player.setVideoOutput(self.window.hipster_video_widget)
         self.window.hipster_media_player.setSource(QUrl.fromLocalFile(video_path))
 
@@ -72,6 +103,10 @@ class HipsterPipeAnimation:
                 self.window.hipster_video_widget.hide()
                 self.window.hipster_video_widget.deleteLater()
                 self.window.hipster_video_widget = None
+            
+            if self.audio_output:
+                self.audio_output.deleteLater()
+                self.audio_output = None
 
 
 class LoadingAnimation:

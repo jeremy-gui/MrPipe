@@ -37,7 +37,7 @@ class ConfigManager:
 
             if 'UI' in self.window.config:
                 self.window.auto_select_updated = self.window.config.getboolean('UI', 'auto_select_updated', fallback=True)
-                self.window.hipster_pipe_enabled = self.window.config.getboolean('UI', 'hipster_pipe_enabled', fallback=False)
+                self.window.hipster_pipe_mode = self.window.config.getint('UI', 'hipster_pipe_mode', fallback=0)
                 self.window.log_font_size = self.window.config.getint('UI', 'log_font_size', fallback=16)
                 
                 # Reconfigure log view font with loaded size
@@ -76,7 +76,7 @@ class ConfigManager:
         if not self.window.config.has_section('UI'):
             self.window.config.add_section('UI')
         self.window.config.set('UI', 'auto_select_updated', str(self.window.auto_select_updated))
-        self.window.config.set('UI', 'hipster_pipe_enabled', str(self.window.hipster_pipe_enabled))
+        self.window.config.set('UI', 'hipster_pipe_mode', str(self.window.hipster_pipe_mode))
         self.window.config.set('UI', 'log_font_size', str(self.window.log_font_size))
 
         splitter_sizes = self.window.splitter.sizes()

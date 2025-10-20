@@ -50,7 +50,7 @@ class MainWindow(QMainWindow):
         )
         os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
         self.auto_select_updated = True  # Par défaut activé
-        self.hipster_pipe_enabled = False  # Hipster Pipe désactivé par défaut
+        self.hipster_pipe_mode = 0  # Hipster Pipe mode: 0=No, 1=Yes, 2=Yes with sound
         self.job_animations = {}  # Pour gérer les timers d'animation des jobs "running"
         self.hipster_video_widget = None  # Pour la vidéo Hipster Pipe
         self.hipster_media_player = None  # Pour le lecteur vidéo Hipster Pipe
@@ -62,7 +62,6 @@ class MainWindow(QMainWindow):
         self._loading_state = 0  # For loading animation
         self.pending_selection = None  # For selecting newly created pipeline/job (type, proj_id, id)
         self._loading_text = "·"  # For loading animation
-        self.hipster_pipe_enabled = False
         self.is_initial_loading = False  # Flag to track initial loading state
         self.log_font_size = 16  # Default log font size
         self.pending_config_dialog = False  # Flag to open config after loading
@@ -292,8 +291,13 @@ class MainWindow(QMainWindow):
             token = dialog.get_token()
             selected_projects = dialog.get_selected_projects()
             self.auto_select_updated = dialog.get_auto_select_updated()
-            self.hipster_pipe_enabled = dialog.get_hipster_pipe_enabled()
+            old_hipster_mode = self.hipster_pipe_mode
+            self.hipster_pipe_mode = dialog.get_hipster_pipe_mode()
             new_font_size = dialog.get_log_font_size()
+            
+            # Play etonne.mp4 if Hipster Pipe was just activated (from No to Yes/Yes with sound)
+            if old_hipster_mode == 0 and self.hipster_pipe_mode > 0:
+                self.hipster_animation.show_animation('etonne')
             
             # Update font size if changed
             if new_font_size != self.log_font_size:
@@ -303,13 +307,19 @@ class MainWindow(QMainWindow):
                 self._reformat_current_logs()
 
             try:
+                # Check if projects list has changed
+                projects_changed = set(selected_projects) != set(self.projects)
+                
                 self.config_manager.save_config(url, token, selected_projects)
                 self.projects = selected_projects
                 self.gitlab_manager = GitLabManager(url, token)
-                # Reset initial load flag to trigger progressive loading again
-                self.project_manager.initial_load_done = False
-                self.is_initial_loading = True
-                self.project_manager.update_projects()
+                
+                # Only reload projects if the list has changed
+                if projects_changed:
+                    # Reset initial load flag to trigger progressive loading again
+                    self.project_manager.initial_load_done = False
+                    self.is_initial_loading = True
+                    self.project_manager.update_projects()
             except Exception as e:
                 self.log_view.setPlainText(f"Erreur de configuration : {str(e)}")
 

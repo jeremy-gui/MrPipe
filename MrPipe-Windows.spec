@@ -21,7 +21,12 @@ a = Analysis(
         ('assets/start.svg', 'assets'),  # Include icone start
         ('assets/stop.svg', 'assets'),  # Include icone stop
         ('version_info.txt', '.'),  # Include version info
-        ('assets/animation.mp4', 'assets'),  # Include Hipster Pipe animation video
+        ('assets/success-1.mp4', 'assets'),  # Include Hipster Pipe success video 1
+        ('assets/success-2.mp4', 'assets'),  # Include Hipster Pipe success video 2
+        ('assets/success-3.mp4', 'assets'),  # Include Hipster Pipe success video 3
+        ('assets/fail.mp4', 'assets'),  # Include Hipster Pipe fail video
+        ('assets/etonne.mp4', 'assets'),  # Include Hipster Pipe activation video
+        ('assets/about.mp4', 'assets'),  # Include About dialog video
     ],
     hiddenimports=[
         'PyQt6',
