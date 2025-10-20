@@ -2,8 +2,8 @@
 Project management utilities
 """
 
-from PyQt6.QtWidgets import QTreeWidgetItem
-from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QTreeWidgetItem, QPushButton, QWidget, QHBoxLayout
+from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtCore import Qt, QTimer
 from datetime import datetime
 
@@ -62,6 +62,61 @@ class ProjectManager:
         self.is_loading = False  # Flag to prevent concurrent loading
         self.initial_load_done = False  # Flag to track initial load
         self.manually_collapsed_projects = set()  # Track projects manually collapsed by user
+        self.hidden_pipelines = set()  # Track hidden pipelines (proj_id, pipeline_id)
+    
+    def create_delete_button(self, proj_id, pipeline_id, pipeline_item):
+        """Create a hide button widget for a pipeline"""
+        # Create a container widget with padding
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(15, 0, 0, 0)  # Padding de 15px à gauche
+        layout.setSpacing(0)
+        
+        button = QPushButton()
+        button.setFixedSize(20, 20)
+        
+        # Load the trash icon
+        from .ui_helpers import UIHelpers
+        icon_path = UIHelpers.get_resource_path("assets/trash.svg")
+        icon = QIcon(icon_path)
+        button.setIcon(icon)
+        button.setIconSize(button.size())
+        
+        button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 68, 68, 0.1);
+                border-radius: 3px;
+            }
+        """)
+        button.setToolTip("Masquer cette pipeline")
+        button.clicked.connect(lambda: self.delete_pipeline(proj_id, pipeline_id, pipeline_item))
+        
+        layout.addWidget(button)
+        layout.addStretch()  # Pousse le bouton à gauche
+        
+        return container
+    
+    def delete_pipeline(self, proj_id, pipeline_id, pipeline_item):
+        """Delete (hide) a pipeline from the display"""
+        # Add to hidden pipelines
+        self.hidden_pipelines.add((proj_id, pipeline_id))
+        
+        # Remove the item from the tree
+        parent = pipeline_item.parent()
+        if parent:
+            parent.removeChild(pipeline_item)
+            
+            # If the project has no more visible pipelines, show a message
+            if parent.childCount() == 0:
+                placeholder = QTreeWidgetItem(parent, ["Toutes les pipelines sont masquées"])
+                placeholder.setForeground(0, QColor('#888'))
+        
+        print(f"Pipeline {pipeline_id} du projet {proj_id} masquée")
     
     def update_projects(self, force_update=False):
         """Update all projects in the tree"""
@@ -321,6 +376,10 @@ class ProjectManager:
 
             if not jobs:
                 continue
+            
+            # Skip hidden pipelines
+            if (proj_id, pipeline.id) in self.hidden_pipelines:
+                continue
 
             # Format pipeline environment target (ref/branch)
             pipeline_env = ""
@@ -346,6 +405,11 @@ class ProjectManager:
                     font.setPointSize(TREE_FONT_SIZE_PIPELINE)
                     child.setFont(0, font)
                     child.setForeground(0, QColor('white'))
+                
+                # Ensure delete button exists
+                if not self.window.tree.itemWidget(child, 1):
+                    delete_button = self.create_delete_button(proj_id, pipeline.id, child)
+                    self.window.tree.setItemWidget(child, 1, delete_button)
             else:
                 pipeline_item = QTreeWidgetItem(proj_item,
                                                 [f"{pipeline_env} Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"])
@@ -358,6 +422,10 @@ class ProjectManager:
                 font.setPointSize(TREE_FONT_SIZE_PIPELINE)
                 pipeline_item.setFont(0, font)
                 pipeline_item.setForeground(0, QColor('white'))
+                
+                # Add delete button widget
+                delete_button = self.create_delete_button(proj_id, pipeline.id, pipeline_item)
+                self.window.tree.setItemWidget(pipeline_item, 1, delete_button)
 
                 for job in jobs:
                     job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])

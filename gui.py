@@ -121,7 +121,12 @@ class MainWindow(QMainWindow):
         # Définir la taille initiale de la fenêtre (largeur, hauteur)
         self.resize(2000, 1200)  # Taille augmentée pour une meilleure visibilité
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabel("Projects and Jobs")
+        self.tree.setColumnCount(2)
+        self.tree.setHeaderLabels(["Projects and Jobs", ""])
+        # La colonne 0 s'ajuste au contenu, la colonne 1 prend tout l'espace restant
+        from PyQt6.QtWidgets import QHeaderView
+        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.tree.itemClicked.connect(lambda item, col: self.job_manager.on_item_clicked(item, col))
         self.tree.itemCollapsed.connect(lambda item: self.project_manager.on_project_collapsed(item))
         self.tree.itemExpanded.connect(lambda item: self.project_manager.on_project_expanded(item))
