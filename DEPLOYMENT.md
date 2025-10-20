@@ -59,7 +59,7 @@ app = BUNDLE(
     name='Mr. Pipe.app',
     icon='assets/logo.icns',
     bundle_identifier='com.mrpipe.app',
-    version='1.0.0',
+    version='1.1.0',
 )
 ```
 
@@ -74,10 +74,10 @@ codesign --deep --force --verify --verbose \
 # Créer un DMG
 hdiutil create -volname "Mr. Pipe" \
     -srcfolder "dist/Mr. Pipe.app" \
-    -ov -format UDZO "dist/MrPipe-1.0.0.dmg"
+    -ov -format UDZO "dist/MrPipe-1.1.0.dmg"
 
 # Notariser (nécessite un compte Apple Developer)
-xcrun notarytool submit "dist/MrPipe-1.0.0.dmg" \
+xcrun notarytool submit "dist/MrPipe-1.1.0.dmg" \
     --apple-id "your@email.com" \
     --team-id "TEAM_ID" \
     --password "app-specific-password"
@@ -147,11 +147,11 @@ datas=[
 ```iss
 [Setup]
 AppName=Mr. Pipe
-AppVersion=1.0.0
+AppVersion=1.1.0
 DefaultDirName={pf}\Mr. Pipe
 DefaultGroupName=Mr. Pipe
 OutputDir=dist
-OutputBaseFilename=MrPipe-Setup-1.0.0
+OutputBaseFilename=MrPipe-Setup-1.1.0
 Compression=lzma2
 SolidCompression=yes
 SetupIconFile=assets\logo.ico

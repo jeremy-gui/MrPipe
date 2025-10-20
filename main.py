@@ -29,7 +29,7 @@ def main():
         app.setOrganizationDomain("mr-pipe.app")
         app.setApplicationName("Mr. Pipe")
         app.setApplicationDisplayName("Mr. Pipe")
-        app.setApplicationVersion("1.0")
+        app.setApplicationVersion("1.1")
         app.setDesktopFileName("mr-pipe")
 
         # Créer le splash screen

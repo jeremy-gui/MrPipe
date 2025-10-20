@@ -52,13 +52,13 @@ app = BUNDLE(
     name='Mr. Pipe.app',
     icon=None,
     bundle_identifier='com.mrpipe.app',
-    version='1.0.0',
+    version='1.1.0',
     info_plist={
         'CFBundleName': 'Mr. Pipe',
         'CFBundleDisplayName': 'Mr. Pipe',
         'CFBundleIdentifier': 'com.mrpipe.app',
-        'CFBundleVersion': '1.0.0',
-        'CFBundleShortVersionString': '1.0',
+        'CFBundleVersion': '1.1.0',
+        'CFBundleShortVersionString': '1.1',
         'NSHumanReadableCopyright': 'Copyright © 2024 Mr. Pipe. All rights reserved.',
     }
 )

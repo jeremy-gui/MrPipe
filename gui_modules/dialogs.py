@@ -283,7 +283,7 @@ class AboutDialog(QDialog):
         # Version
         version_label = QLabel("Version:")
         version_label.setStyleSheet("font-weight: bold; color: white;")
-        version_value = QLabel("v1.0.1")
+        version_value = QLabel("v1.1.0")
         version_value.setStyleSheet("color: white;")
         left_layout.addWidget(version_label)
         left_layout.addWidget(version_value)

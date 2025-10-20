@@ -6,8 +6,8 @@ VSVersionInfo(
   ffi=FixedFileInfo(
     # filevers and prodvers should be always a tuple with four items: (1, 2, 3, 4)
     # Set not needed items to zero 0.
-    filevers=(1, 0, 0, 0),
-    prodvers=(1, 0, 0, 0),
+    filevers=(1, 1, 0, 0),
+    prodvers=(1, 1, 0, 0),
     # Contains a bitmask that specifies the Boolean attributes of the file.
     mask=0x3f,
     # Contains a bitmask that specifies the Boolean attributes of the file after the file is installed on a system.
@@ -32,12 +32,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'Mr. Pipe'),
             StringStruct('FileDescription', 'GitLab Pipelines Manager'),
-            StringStruct('FileVersion', '1.0.0'),
+            StringStruct('FileVersion', '1.1.0'),
             StringStruct('InternalName', 'Mr. Pipe'),
             StringStruct('LegalCopyright', 'Copyright © 2024 Mr. Pipe. All rights reserved.'),
             StringStruct('OriginalFilename', 'Mr. Pipe.exe'),
             StringStruct('ProductName', 'Mr. Pipe'),
-            StringStruct('ProductVersion', '1.0.0'),
+            StringStruct('ProductVersion', '1.1.0'),
           ]
         )
       ]
