@@ -6,6 +6,7 @@
 - [x] **Fermeture de projet** : Empêcher l'expansion automatique d'un projet lors de sa mise à jour s'il a été fermé manuellement par l'utilisateur
 - [x] **Hipster pipe** : Ne pas afficher l'animation de succès pour une pipeline qui n'est pas actuellement sélectionnée
 - [ ] **Innactivité** : Après une longue période d'inactivité il n'y a plus de chargemetn des pipeline automatique
+- [ ] **Erreur HTTP code filter** : Filtrer des codes https en erreur
 
 ### Nouvelles fonctionnalités (feat)
 - [x] **Timestamp pipeline** : Afficher le timestamp de création/exécution des pipelines + info tool sur job : date de mise à jour du job + date de création du job

@@ -21,6 +21,9 @@ def main():
     try:
         print("Creating QApplication")
         app = QApplication(sys.argv)
+        
+        # Désactiver l'utilisation des couleurs système natives
+        app.setStyle('Fusion')
 
         app.setOrganizationName("Mr. Pipe")
         app.setOrganizationDomain("mr-pipe.app")

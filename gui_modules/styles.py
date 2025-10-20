@@ -9,143 +9,184 @@ TREE_FONT_SIZE_PIPELINE = 11  # Pipeline names in tree
 
 
 def get_dark_mode_stylesheet():
-    """Retourne le stylesheet dark mode complet"""
+    """Retourne le stylesheet Material Design avec couleurs Mr. Pipe"""
     return """
-    /* Main window background */
+    /* Main window background - Material Design */
     QMainWindow {
-        background-color: #2b2b2b;
-        color: #ffffff;
+        background-color: #263238;
+        color: #eceff1;
     }
 
-    /* Tree widget */
+    /* Tree widget - Material Design */
     QTreeWidget {
-        background-color: #2b2b2b;
-        color: #ffffff;
-        border: 1px solid #555555;
-        alternate-background-color: #333333;
+        background-color: #37474f;
+        color: #eceff1;
+        border: none;
+        alternate-background-color: #263238;
+        font-size: 10pt;
+        outline: none;
+        selection-background-color: rgba(153, 229, 255, 0.4);
+        selection-color: white;
+    }
+
+    QTreeWidget::branch:selected {
+        background-color: rgba(153, 229, 255, 0.4);
+    }
+
+    QTreeWidget::branch:hover {
+        background-color: rgba(52, 152, 219, 0.2);
     }
 
     QTreeWidget::item {
         background-color: transparent;
-        border-bottom: 1px solid #444444;
-        padding: 2px;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 4px 8px;
+        min-height: 20px;
+        border-radius: 2px;
     }
 
     QTreeWidget::item:selected {
-        background-color: #4a90d9;
-        color: white;
+        background-color: rgba(153, 229, 255, 0.4) !important;
+        color: white !important;
+    }
+
+    QTreeWidget::item:selected:active {
+        background-color: rgba(153, 229, 255, 0.4) !important;
+        color: white !important;
+    }
+
+    QTreeWidget::item:selected:!active {
+        background-color: rgba(153, 229, 255, 0.3) !important;
+        color: white !important;
     }
 
     QTreeWidget::item:hover {
-        background-color: #404040;
+        background-color: rgba(52, 152, 219, 0.2);
     }
 
-    /* Headers */
+    /* Headers - Material Design */
     QHeaderView::section {
-        background-color: #404040;
-        color: #ffffff;
-        border: 1px solid #555555;
-        padding: 4px;
+        background-color: #455a64;
+        color: #eceff1;
+        border: none;
+        padding: 8px;
+        font-weight: 500;
+        font-size: 11pt;
     }
 
-    /* Buttons */
+    /* Buttons - Material Design */
     QPushButton {
-        background-color: #404040;
-        color: #ffffff;
-        border: 1px solid #555555;
+        background-color: rgba(153, 229, 255, 0.4);
+        color: white;
+        border: none;
         border-radius: 4px;
         padding: 8px 16px;
-        font-size: 12px;
+        font-size: 11pt;
+        font-weight: 500;
     }
 
     QPushButton:hover {
-        background-color: #555555;
+        background-color: #fca326;
     }
 
     QPushButton:pressed {
-        background-color: #666666;
+        background-color: #db5b23;
     }
 
     QPushButton:disabled {
-        background-color: #333333;
-        color: #888888;
+        background-color: #546e7a;
+        color: #90a4ae;
     }
 
-    /* Line edits */
+    /* Line edits - Material Design */
     QLineEdit {
-        background-color: #404040;
-        color: #ffffff;
-        border: 1px solid #555555;
-        border-radius: 4px;
-        padding: 6px;
-        selection-background-color: #4a90d9;
+        background-color: #455a64;
+        color: #eceff1;
+        border: none;
+        border-bottom: 2px solid #546e7a;
+        border-radius: 2px;
+        padding: 8px;
+        selection-background-color: rgba(153, 229, 255, 0.4);
+        font-size: 10pt;
     }
 
     QLineEdit:focus {
-        border-color: #4a90d9;
+        border-bottom: 2px solid #3498db;
+        background-color: #455a64;
     }
 
-    /* Labels */
+    /* Labels - Material Design */
     QLabel {
-        color: #ffffff;
+        color: #eceff1;
+        font-weight: 400;
     }
 
-    /* Dialogs */
+    /* Dialogs - Material Design */
     QDialog {
-        background-color: #2b2b2b;
-        color: #ffffff;
+        background-color: #263238;
+        color: #eceff1;
+        border: none;
     }
 
-    /* List widgets */
+    /* List widgets - Material Design */
     QListWidget {
-        background-color: #2b2b2b;
-        color: #ffffff;
-        border: 1px solid #555555;
-        alternate-background-color: #333333;
+        background-color: #37474f;
+        color: #eceff1;
+        border: none;
+        alternate-background-color: #263238;
+        outline: none;
     }
 
     QListWidget::item {
         background-color: transparent;
-        color: #ffffff;
-        border-bottom: 1px solid #444444;
-        padding: 4px;
+        color: #eceff1;
+        border: none;
+        padding: 8px;
+        min-height: 20px;
+        border-radius: 2px;
     }
 
     QListWidget::item:selected {
-        background-color: #4a90d9;
+        background-color: rgba(153, 229, 255, 0.4);
         color: white;
     }
 
     QListWidget::item:hover {
-        background-color: #404040;
+        background-color: rgba(52, 152, 219, 0.2);
     }
 
-    /* QListWidget check indicators */
+    /* Checkboxes - Material Design */
     QListWidget::indicator {
-        background-color: #404040;
-        border: 1px solid #555555;
-        width: 16px;
-        height: 16px;
+        background-color: #455a64;
+        border: 2px solid #546e7a;
+        border-radius: 2px;
+        width: 18px;
+        height: 18px;
     }
 
     QListWidget::indicator:checked {
-        background-color: #5cb3ff;
-        border: 1px solid #5cb3ff;
+        background-color: rgba(153, 229, 255, 0.6);
+        border: 2px solid rgba(153, 229, 255, 0.6);
+        image: url(none);
     }
+    
     QCheckBox {
-        color: #ffffff;
+        color: #eceff1;
+        font-weight: 400;
     }
 
     QCheckBox::indicator {
-        background-color: #404040;
-        border: 1px solid #555555;
-        width: 16px;
-        height: 16px;
+        background-color: #455a64;
+        border: 2px solid #546e7a;
+        border-radius: 2px;
+        width: 18px;
+        height: 18px;
     }
 
     QCheckBox::indicator:checked {
-        background-color: #4a90d9;
-        border: 1px solid #4a90d9;
+        background-color: rgba(153, 229, 255, 0.6);
+        border: 2px solid rgba(153, 229, 255, 0.6);
     }
 
     /* Dialog button box */
@@ -153,53 +194,61 @@ def get_dark_mode_stylesheet():
         button-layout: 0;
     }
 
-    /* Menu bar */
+    /* Menu bar - Material Design */
     QMenuBar {
-        background-color: #404040;
-        color: #ffffff;
-        border-bottom: 1px solid #555555;
+        background-color: #455a64;
+        color: #eceff1;
+        border: none;
+        font-weight: 500;
+        font-size: 10pt;
     }
 
     QMenuBar::item {
         background-color: transparent;
-        color: #ffffff;
-        padding: 4px 8px;
+        color: #eceff1;
+        padding: 8px 12px;
+        border-radius: 2px;
     }
 
     QMenuBar::item:selected {
-        background-color: #555555;
+        background-color: rgba(153, 229, 255, 0.2);
     }
 
-    /* Menus */
+    /* Menus - Material Design */
     QMenu {
-        background-color: #404040;
-        color: #ffffff;
-        border: 1px solid #555555;
+        background-color: #37474f;
+        color: #eceff1;
+        border: none;
+        border-radius: 4px;
     }
 
     QMenu::item {
         background-color: transparent;
-        color: #ffffff;
-        padding: 4px 20px;
+        color: #eceff1;
+        padding: 8px 24px;
+        border-radius: 2px;
     }
 
     QMenu::item:selected {
-        background-color: #555555;
+        background-color: rgba(153, 229, 255, 0.4);
+        color: white;
     }
 
-    /* Message boxes */
+    /* Message boxes - Material Design */
     QMessageBox {
-        background-color: #2b2b2b;
-        color: #ffffff;
+        background-color: #263238;
+        color: #eceff1;
+        border: none;
     }
 
     QMessageBox QLabel {
-        color: #ffffff;
+        color: #eceff1;
+        font-weight: 400;
     }
 
-    /* Splitter */
+    /* Splitter - Material Design */
     QSplitter::handle {
-        background-color: #555555;
+        background-color: #455a64;
     }
 
     QSplitter::handle:horizontal {
@@ -207,61 +256,67 @@ def get_dark_mode_stylesheet():
     }
 
     QSplitter::handle:hover {
-        background-color: #666666;
+        background-color: rgba(153, 229, 255, 0.4);
     }
     """
 
 
 def get_log_view_stylesheet(font_size=16):
-    """Retourne le stylesheet pour la vue des logs
+    """Retourne le stylesheet pour la vue des logs - Material Design
     
     Args:
         font_size: Taille de la police en points (défaut: 16)
     """
     return f"""
     QTextEdit {{
-        background-color: #1e1e1e;
-        color: #ffffff;
-        font-family: 'Courier New', monospace;
+        background-color: #263238;
+        color: #00ff41;
+        font-family: 'Courier New', 'Consolas', monospace;
         font-size: {font_size}pt;
         line-height: 1.5;
-        padding: 10px;
-        selection-background-color: #4a90d9;
+        padding: 12px;
+        border: none;
+        selection-background-color: rgba(153, 229, 255, 0.4);
         selection-color: white;
+        font-weight: normal;
     }}
     """
 
 
 def get_dialog_stylesheet():
-    """Retourne le stylesheet pour les dialogues"""
+    """Retourne le stylesheet pour les dialogues - Material Design"""
     return """
     QDialog {
-        background-color: #2b2b2b;
-        color: white;
+        background-color: #263238;
+        color: #eceff1;
+        border: none;
     }
 
     /* QListWidget check indicators */
     QListWidget::indicator {
-        background-color: #404040;
-        border: 1px solid #555555;
-        width: 16px;
-        height: 16px;
+        background-color: #455a64;
+        border: 2px solid #546e7a;
+        border-radius: 2px;
+        width: 18px;
+        height: 18px;
     }
 
     QListWidget::indicator:checked {
-        background-color: #5cb3ff;
-        border: 1px solid #5cb3ff;
+        background-color: rgba(153, 229, 255, 0.4);
+        border: 2px solid rgba(153, 229, 255, 0.4);
     }
     """
 
 
 def get_license_text_stylesheet():
-    """Retourne le stylesheet pour le texte de licence"""
+    """Retourne le stylesheet pour le texte de licence - Material Design"""
     return """
     QTextEdit {
-        background-color: #1e1e1e;
-        color: white;
-        font-family: monospace;
+        background-color: #263238;
+        color: #eceff1;
+        font-family: 'Courier New', monospace;
         font-size: 10pt;
+        border: none;
+        font-weight: 400;
     }
     """

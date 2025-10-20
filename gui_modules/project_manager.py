@@ -2,7 +2,7 @@
 Project management utilities
 """
 
-from PyQt6.QtWidgets import QTreeWidgetItem, QPushButton, QWidget, QHBoxLayout
+from PyQt6.QtWidgets import QTreeWidgetItem, QPushButton, QWidget, QHBoxLayout, QLabel
 from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtCore import Qt, QTimer
 from datetime import datetime
@@ -63,6 +63,22 @@ class ProjectManager:
         self.initial_load_done = False  # Flag to track initial load
         self.manually_collapsed_projects = set()  # Track projects manually collapsed by user
         self.hidden_pipelines = set()  # Track hidden pipelines (proj_id, pipeline_id)
+    
+    def create_env_pill(self, env_name):
+        """Create a pill widget for environment name"""
+        pill = QLabel(env_name)
+        pill.setStyleSheet("""
+            QLabel {
+                background-color: transparent;
+                color: #99e5ff;
+                border: 1px solid #99e5ff;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-size: 9pt;
+                font-weight: bold;
+            }
+        """)
+        return pill
     
     def create_delete_button(self, proj_id, pipeline_id, pipeline_item):
         """Create a hide button widget for a pipeline"""
@@ -381,21 +397,22 @@ class ProjectManager:
             if (proj_id, pipeline.id) in self.hidden_pipelines:
                 continue
 
-            # Format pipeline environment target (ref/branch)
+            # Format pipeline environment target (ref/branch) as a pill
             pipeline_env = ""
             if hasattr(pipeline, 'ref') and pipeline.ref:
-                pipeline_env = f" [{pipeline.ref}]"
+                # Utiliser des caractères Unicode pour créer un encadrement
+                pipeline_env = f"【{pipeline.ref}】"
             
             # Format pipeline timestamp
             pipeline_time = ""
             if hasattr(pipeline, 'created_at') and pipeline.created_at:
                 pipeline_time = format_timestamp(pipeline.created_at)
-                pipeline_time = f" [{pipeline_time}]" if pipeline_time else ""
+                pipeline_time = f"【{pipeline_time}】" if pipeline_time else ""
 
             if pipeline.id in existing_pipeline_ids:
                 child = existing_pipeline_ids[pipeline.id]
                 current_text = child.text(0)
-                expected_text = f"{pipeline_env} Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"
+                expected_text = f"{pipeline_env}Pipeline {pipeline.id} • {pipeline.status} • {pipeline_time}"
                 if current_text != expected_text:
                     child.setText(0, expected_text)
                     self.update_pipeline_jobs(child, jobs, proj_id, pipeline)
@@ -404,7 +421,12 @@ class ProjectManager:
                     font.setBold(True)
                     font.setPointSize(TREE_FONT_SIZE_PIPELINE)
                     child.setFont(0, font)
-                    child.setForeground(0, QColor('white'))
+                    
+                    # Appliquer une couleur différente si environnement présent
+                    if pipeline_env:
+                        child.setForeground(0, QColor('#99e5ff'))  # Bleu clair pour la pill
+                    else:
+                        child.setForeground(0, QColor('white'))
                 
                 # Ensure delete button exists
                 if not self.window.tree.itemWidget(child, 1):
@@ -412,7 +434,7 @@ class ProjectManager:
                     self.window.tree.setItemWidget(child, 1, delete_button)
             else:
                 pipeline_item = QTreeWidgetItem(proj_item,
-                                                [f"{pipeline_env} Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"])
+                                                [f"{pipeline_env}Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"])
 
                 # Store pipeline ID in item data
                 pipeline_item.setData(0, Qt.ItemDataRole.UserRole + 1, pipeline.id)
@@ -421,7 +443,12 @@ class ProjectManager:
                 font.setBold(True)
                 font.setPointSize(TREE_FONT_SIZE_PIPELINE)
                 pipeline_item.setFont(0, font)
-                pipeline_item.setForeground(0, QColor('white'))
+                
+                # Appliquer une couleur différente si environnement présent
+                if pipeline_env:
+                    pipeline_item.setForeground(0, QColor('#99e5ff'))  # Bleu clair pour la pill
+                else:
+                    pipeline_item.setForeground(0, QColor('white'))
                 
                 # Add delete button widget
                 delete_button = self.create_delete_button(proj_id, pipeline.id, pipeline_item)
@@ -510,8 +537,18 @@ class ProjectManager:
 
     def on_project_error(self, error, proj_id):
         """Called on project loading error"""
+        # Ne pas afficher l'erreur dans le tree, juste logger
+        print(f"Erreur chargement projet {proj_id}: {error}")
+        
+        # Optionnel: masquer temporairement le projet en erreur
         if proj_id in self.window.project_items:
-            self.window.project_items[proj_id].setText(0, f"Erreur: {error}")
+            proj_item = self.window.project_items[proj_id]
+            # Garder le nom du projet mais indiquer qu'il est temporairement indisponible
+            current_text = proj_item.text(0)
+            if not current_text.endswith("(indisponible)"):
+                proj_item.setText(0, f"{current_text} (indisponible)")
+            # Griser le texte
+            proj_item.setForeground(0, QColor('#666'))
         
         # Retry after 60 seconds
         if not hasattr(self.window, 'retry_update_timer'):
