@@ -23,6 +23,7 @@ from gui_modules.project_manager import ProjectManager
 from gui_modules.job_manager import JobManager, JobColorManager
 from gui_modules.log_display import LogDisplay
 from gui_modules.ui_helpers import UIHelpers, HipsterPipeAnimation, LoadingAnimation
+from gui_modules.log_header import LogHeader
 
 
 # Workers are now imported from gui.workers module
@@ -59,6 +60,7 @@ class MainWindow(QMainWindow):
         self.launch_button = None  # For launch button feedback
         self.current_manual_job = None  # For launching manual jobs
         self._loading_state = 0  # For loading animation
+        self.pending_selection = None  # For selecting newly created pipeline/job (type, proj_id, id)
         self._loading_text = "·"  # For loading animation
         self.hipster_pipe_enabled = False
         self.is_initial_loading = False  # Flag to track initial loading state
@@ -123,17 +125,36 @@ class MainWindow(QMainWindow):
         self.tree = QTreeWidget()
         self.tree.setColumnCount(2)
         self.tree.setHeaderLabels(["Projects and Jobs", ""])
-        # La colonne 0 s'ajuste au contenu, la colonne 1 prend tout l'espace restant
+        self.tree.setTextElideMode(Qt.TextElideMode.ElideRight)  # Tronquer le texte avec "..." à droite
+        
+        # Configuration des colonnes APRÈS avoir ajouté le widget au splitter
+        self.splitter.addWidget(self.tree)
+        
+        # La colonne 0 s'étire et peut tronquer le texte, la colonne 1 a une largeur fixe pour les icônes
         from PyQt6.QtWidgets import QHeaderView
-        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.tree.setColumnWidth(1, 80)  # Largeur fixe de 80px pour la colonne des icônes (3 boutons pour pipelines)
+        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.tree.header().setStretchLastSection(False)  # Ne pas étirer la dernière section
+        
         self.tree.itemClicked.connect(lambda item, col: self.job_manager.on_item_clicked(item, col))
         self.tree.itemCollapsed.connect(lambda item: self.project_manager.on_project_collapsed(item))
         self.tree.itemExpanded.connect(lambda item: self.project_manager.on_project_expanded(item))
-        self.tree.setMinimumWidth(200)  # Largeur minimale pour éviter que ce soit trop petit
-        self.splitter.addWidget(self.tree)
+        
+        # Create log container with header
+        log_container = QWidget()
+        log_layout = QVBoxLayout(log_container)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+        log_layout.setSpacing(0)
+        
+        # Add header
+        self.log_header = LogHeader()
+        log_layout.addWidget(self.log_header)
+        
+        # Add log view
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
+        log_layout.addWidget(self.log_view)
 
         # Launch widget for manual jobs
         launch_widget = QWidget()
@@ -149,7 +170,7 @@ class MainWindow(QMainWindow):
 
         # Stacked widget for right side
         self.right_stack = QStackedWidget()
-        self.right_stack.addWidget(self.log_view)  # index 0
+        self.right_stack.addWidget(log_container)  # index 0 - log view with header
         self.right_stack.addWidget(launch_widget)  # index 1
         self.right_stack.setCurrentIndex(0)  # default to log_view
         self.right_stack.setMinimumWidth(400)  # Largeur minimale pour le panneau de droite

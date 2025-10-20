@@ -17,6 +17,9 @@ a = Analysis(
         ('assets/image.png', 'assets'),  # Include splash image
         ('assets/logo.icns', 'assets'),  # Include icns icon
         ('assets/logo.ico', 'assets'),  # Include ico icon
+        ('assets/trash.svg', 'assets'),  # Include icone poubelle
+        ('assets/start.svg', 'assets'),  # Include icone start
+        ('assets/stop.svg', 'assets'),  # Include icone stop
         ('assets/ico.ico', 'assets'),  # Include window icon
         ('assets/animation.mp4', 'assets'),  # Include Hipster Pipe animation video
     ],

@@ -3,7 +3,8 @@ Job management utilities
 """
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor, QTextCursor
+from PyQt6.QtGui import QColor, QTextCursor, QIcon
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton
 
 from .workers import JobDataWorker, LogWorker
 
@@ -13,6 +14,179 @@ class JobManager:
     
     def __init__(self, main_window):
         self.window = main_window
+    
+    def create_job_buttons(self, proj_id, job_id, job_status):
+        """Create action buttons widget for a job (retry, cancel)"""
+        container = QWidget()
+        container.setFixedWidth(50)  # Largeur fixe pour 2 boutons
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(5, 0, 0, 0)
+        layout.setSpacing(2)
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        
+        from .ui_helpers import UIHelpers
+        
+        # Retry button
+        retry_button = QPushButton()
+        retry_button.setFixedSize(20, 20)
+        retry_icon_path = UIHelpers.get_resource_path("assets/start.svg")
+        retry_button.setIcon(QIcon(retry_icon_path))
+        retry_button.setIconSize(retry_button.size())
+        retry_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        retry_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: rgba(76, 175, 80, 0.2);
+                border-radius: 3px;
+            }
+        """)
+        retry_button.setToolTip("Relancer le job")
+        retry_button.clicked.connect(lambda: self.retry_job(proj_id, job_id))
+        layout.addWidget(retry_button)
+        
+        # Cancel button - show if job is running or pending
+        if job_status in ['running', 'pending']:
+            cancel_button = QPushButton()
+            cancel_button.setFixedSize(20, 20)
+            cancel_icon_path = UIHelpers.get_resource_path("assets/stop.svg")
+            cancel_button.setIcon(QIcon(cancel_icon_path))
+            cancel_button.setIconSize(cancel_button.size())
+            cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            cancel_button.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    border: none;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background-color: rgba(255, 152, 0, 0.2);
+                    border-radius: 3px;
+                }
+            """)
+            cancel_button.setToolTip("Annuler le job")
+            cancel_button.clicked.connect(lambda: self.cancel_job(proj_id, job_id))
+            layout.addWidget(cancel_button)
+        
+        return container
+    
+    def retry_job(self, proj_id, job_id):
+        """Retry a job"""
+        try:
+            project = self.window.gitlab_manager.get_project(proj_id)
+            job = project.jobs.get(job_id)
+            
+            # Retry returns a dict, not a job object
+            new_job_data = job.retry()
+            
+            # Get the new job ID from the dict
+            if isinstance(new_job_data, dict):
+                new_job_id = new_job_data.get('id', job_id)
+            else:
+                new_job_id = new_job_data.id
+            
+            print(f"Job {job_id} relancé, nouveau job: {new_job_id}")
+            
+            # Show success message
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self.window, "Job relancé", f"Le job a été relancé avec succès.")
+            
+            # Store the new job ID to select it after refresh
+            self.window.pending_selection = ('job', proj_id, new_job_id)
+            
+            # Refresh will happen automatically
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Erreur lors du relancement du job: {error_msg}")
+            # Show error message to user
+            from PyQt6.QtWidgets import QMessageBox
+            if "403" in error_msg or "Forbidden" in error_msg or "not retryable" in error_msg:
+                QMessageBox.warning(self.window, "Job non relançable", 
+                                   "Ce job ne peut pas être relancé.\n\n"
+                                   "Raisons possibles:\n"
+                                   "- Le job est déjà en cours d'exécution\n"
+                                   "- Le job est manuel et n'a pas encore été démarré\n"
+                                   "- Le job n'est pas dans un état permettant le relancement")
+            else:
+                QMessageBox.critical(self.window, "Erreur", f"Erreur lors du relancement du job:\n{error_msg}")
+    
+    def cancel_job(self, proj_id, job_id):
+        """Cancel a job"""
+        try:
+            project = self.window.gitlab_manager.get_project(proj_id)
+            job = project.jobs.get(job_id)
+            job.cancel()
+            print(f"Job {job_id} annulé")
+            # Show success message
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self.window, "Job annulé", f"Le job a été annulé avec succès.")
+            # Refresh will happen automatically
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Erreur lors de l'annulation du job: {error_msg}")
+            # Show error message to user
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self.window, "Erreur", f"Erreur lors de l'annulation du job:\n{error_msg}")
+    
+    def _update_header_for_job(self, proj_id, job_id, job_status):
+        """Update the log header with job information"""
+        try:
+            # Get project info
+            project = self.window.gitlab_manager.get_project(proj_id)
+            project_name = project.name
+            
+            # Get job info
+            job = project.jobs.get(job_id)
+            job_name = job.name
+            
+            # Get environment (ref)
+            env_name = ""
+            if hasattr(job, 'ref') and job.ref:
+                env_name = job.ref
+            
+            # Get date
+            date = ""
+            if hasattr(job, 'created_at') and job.created_at:
+                from gui_modules.project_manager import format_timestamp
+                date = format_timestamp(job.created_at)
+            
+            # Get duration
+            duration = ""
+            if hasattr(job, 'duration') and job.duration:
+                duration = self._format_duration(job.duration)
+            
+            # Update header
+            self.window.log_header.update_info(
+                project_name=project_name,
+                env_name=env_name,
+                job_name=job_name,
+                status=job_status,
+                date=date,
+                duration=duration,
+                is_pipeline=False
+            )
+        except Exception as e:
+            print(f"Error updating header: {e}")
+            self.window.log_header.clear()
+    
+    def _format_duration(self, seconds):
+        """Format duration in seconds to human readable format"""
+        if seconds is None:
+            return ""
+        
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        
+        if hours > 0:
+            return f"{hours}h {minutes}m {secs}s"
+        elif minutes > 0:
+            return f"{minutes}m {secs}s"
+        else:
+            return f"{secs}s"
     
     def on_item_clicked(self, item, column):
         """Handle tree item click"""
@@ -74,11 +248,15 @@ class JobManager:
 
         if job_data is None:
             self.window.log_view.setPlainText("Impossible de récupérer les données du job")
+            self.window.log_header.clear()
             return
 
         proj_id, job_id = self.window.current_job
         job_status = job_data.get('status')
         log_content = job_data.get('trace')
+        
+        # Update header with job information
+        self._update_header_for_job(proj_id, job_id, job_status)
 
         if job_status == 'manual':
             self.window.current_manual_job = (proj_id, job_id)

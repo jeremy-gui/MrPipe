@@ -2,10 +2,32 @@
 Styles and themes for the application
 """
 
-# Font size constants for consistency
-LOG_FONT_SIZE = 16  # Main log display font size
-TREE_FONT_SIZE_PROJECT = 12  # Project names in tree
-TREE_FONT_SIZE_PIPELINE = 11  # Pipeline names in tree
+import sys
+import platform
+
+def get_font_scale():
+    """
+    Retourne un facteur d'échelle pour les polices selon la plateforme.
+    macOS (Retina) : 1.0 (tailles normales)
+    Windows/Linux : 0.85 (tailles réduites de 15%)
+    """
+    if platform.system() == 'Darwin':  # macOS
+        return 1.0
+    else:  # Windows, Linux
+        return 0.85
+
+# Font size constants for consistency (ajustés selon la plateforme)
+_SCALE = get_font_scale()
+LOG_FONT_SIZE = int(16 * _SCALE)  # Main log display font size
+TREE_FONT_SIZE_PROJECT = int(12 * _SCALE)  # Project names in tree
+TREE_FONT_SIZE_PIPELINE = int(11 * _SCALE)  # Pipeline names in tree
+
+# Header font sizes
+HEADER_PROJECT_FONT_SIZE = int(14 * _SCALE)
+HEADER_JOB_FONT_SIZE = int(13 * _SCALE)
+HEADER_STATUS_FONT_SIZE = int(10 * _SCALE)
+HEADER_ENV_FONT_SIZE = int(9 * _SCALE)
+HEADER_DATE_FONT_SIZE = int(11 * _SCALE)
 
 
 def get_dark_mode_stylesheet():

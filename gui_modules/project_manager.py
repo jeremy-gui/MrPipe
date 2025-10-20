@@ -80,25 +80,71 @@ class ProjectManager:
         """)
         return pill
     
-    def create_delete_button(self, proj_id, pipeline_id, pipeline_item):
-        """Create a hide button widget for a pipeline"""
-        # Create a container widget with padding
+    def create_pipeline_buttons(self, proj_id, pipeline_id, pipeline_item, pipeline_status):
+        """Create action buttons widget for a pipeline (restart, cancel, hide)"""
+        # Create a container widget with minimal padding
         container = QWidget()
+        container.setFixedWidth(70)  # Largeur fixe pour 3 boutons (3x20 + padding)
         layout = QHBoxLayout(container)
-        layout.setContentsMargins(15, 0, 0, 0)  # Padding de 15px à gauche
-        layout.setSpacing(0)
+        layout.setContentsMargins(5, 0, 0, 0)  # Padding 5px à gauche seulement
+        layout.setSpacing(2)
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         
-        button = QPushButton()
-        button.setFixedSize(20, 20)
-        
-        # Load the trash icon
         from .ui_helpers import UIHelpers
-        icon_path = UIHelpers.get_resource_path("assets/trash.svg")
-        icon = QIcon(icon_path)
-        button.setIcon(icon)
-        button.setIconSize(button.size())
         
-        button.setStyleSheet("""
+        # Restart button
+        restart_button = QPushButton()
+        restart_button.setFixedSize(20, 20)
+        restart_icon_path = UIHelpers.get_resource_path("assets/start.svg")
+        restart_button.setIcon(QIcon(restart_icon_path))
+        restart_button.setIconSize(restart_button.size())
+        restart_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        restart_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: rgba(76, 175, 80, 0.2);
+                border-radius: 3px;
+            }
+        """)
+        restart_button.setToolTip("Relancer la pipeline")
+        restart_button.clicked.connect(lambda: self.restart_pipeline(proj_id, pipeline_id))
+        layout.addWidget(restart_button)
+        
+        # Cancel button - show if pipeline is running or pending
+        if pipeline_status in ['running', 'pending']:
+            cancel_button = QPushButton()
+            cancel_button.setFixedSize(20, 20)
+            cancel_icon_path = UIHelpers.get_resource_path("assets/stop.svg")
+            cancel_button.setIcon(QIcon(cancel_icon_path))
+            cancel_button.setIconSize(cancel_button.size())
+            cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            cancel_button.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    border: none;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background-color: rgba(255, 152, 0, 0.2);
+                    border-radius: 3px;
+                }
+            """)
+            cancel_button.setToolTip("Annuler la pipeline")
+            cancel_button.clicked.connect(lambda: self.cancel_pipeline(proj_id, pipeline_id))
+            layout.addWidget(cancel_button)
+        
+        # Hide button
+        hide_button = QPushButton()
+        hide_button.setFixedSize(20, 20)
+        trash_icon_path = UIHelpers.get_resource_path("assets/trash.svg")
+        hide_button.setIcon(QIcon(trash_icon_path))
+        hide_button.setIconSize(hide_button.size())
+        hide_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        hide_button.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
                 border: none;
@@ -109,13 +155,62 @@ class ProjectManager:
                 border-radius: 3px;
             }
         """)
-        button.setToolTip("Masquer cette pipeline")
-        button.clicked.connect(lambda: self.delete_pipeline(proj_id, pipeline_id, pipeline_item))
-        
-        layout.addWidget(button)
-        layout.addStretch()  # Pousse le bouton à gauche
+        hide_button.setToolTip("Masquer cette pipeline")
+        hide_button.clicked.connect(lambda: self.delete_pipeline(proj_id, pipeline_id, pipeline_item))
+        layout.addWidget(hide_button)
         
         return container
+    
+    def restart_pipeline(self, proj_id, pipeline_id):
+        """Restart a pipeline - creates a new pipeline with same parameters"""
+        try:
+            project = self.window.gitlab_manager.get_project(proj_id)
+            pipeline = project.pipelines.get(pipeline_id)
+            
+            # Get the ref (branch) from the current pipeline
+            ref = pipeline.ref
+            
+            # Create a new pipeline with the same ref
+            new_pipeline = project.pipelines.create({'ref': ref})
+            print(f"Nouvelle pipeline {new_pipeline.id} créée à partir de la pipeline {pipeline_id} (ref: {ref})")
+            
+            # Show success message
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self.window, "Pipeline créée", 
+                                   f"Nouvelle pipeline #{new_pipeline.id} créée avec succès sur la branche '{ref}'.")
+            
+            # Store the new pipeline ID to select it after refresh
+            self.window.pending_selection = ('pipeline', proj_id, new_pipeline.id)
+            
+            # Refresh the project data
+            self._start_project_worker(proj_id, progressive=False)
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Erreur lors du relancement de la pipeline: {error_msg}")
+            # Show error message to user
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self.window, "Erreur", f"Erreur lors de la création de la pipeline:\n{error_msg}")
+    
+    def cancel_pipeline(self, proj_id, pipeline_id):
+        """Cancel a pipeline"""
+        try:
+            project = self.window.gitlab_manager.get_project(proj_id)
+            pipeline = project.pipelines.get(pipeline_id)
+            pipeline.cancel()
+            print(f"Pipeline {pipeline_id} annulée")
+            
+            # Show success message
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self.window, "Pipeline annulée", f"La pipeline a été annulée avec succès.")
+            
+            # Refresh the project data
+            self._start_project_worker(proj_id, progressive=False)
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Erreur lors de l'annulation de la pipeline: {error_msg}")
+            # Show error message to user
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self.window, "Erreur", f"Erreur lors de l'annulation de la pipeline:\n{error_msg}")
     
     def delete_pipeline(self, proj_id, pipeline_id, pipeline_item):
         """Delete (hide) a pipeline from the display"""
@@ -428,10 +523,9 @@ class ProjectManager:
                     else:
                         child.setForeground(0, QColor('white'))
                 
-                # Ensure delete button exists
-                if not self.window.tree.itemWidget(child, 1):
-                    delete_button = self.create_delete_button(proj_id, pipeline.id, child)
-                    self.window.tree.setItemWidget(child, 1, delete_button)
+                # Update action buttons (recreate to reflect current status)
+                buttons = self.create_pipeline_buttons(proj_id, pipeline.id, child, pipeline.status)
+                self.window.tree.setItemWidget(child, 1, buttons)
             else:
                 pipeline_item = QTreeWidgetItem(proj_item,
                                                 [f"{pipeline_env}Pipeline {pipeline.id} - {pipeline.status}{pipeline_time}"])
@@ -450,9 +544,9 @@ class ProjectManager:
                 else:
                     pipeline_item.setForeground(0, QColor('white'))
                 
-                # Add delete button widget
-                delete_button = self.create_delete_button(proj_id, pipeline.id, pipeline_item)
-                self.window.tree.setItemWidget(pipeline_item, 1, delete_button)
+                # Add action buttons widget
+                buttons = self.create_pipeline_buttons(proj_id, pipeline.id, pipeline_item, pipeline.status)
+                self.window.tree.setItemWidget(pipeline_item, 1, buttons)
 
                 for job in jobs:
                     job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
@@ -466,6 +560,10 @@ class ProjectManager:
                     # Import job_manager to set color
                     from .job_manager import JobColorManager
                     JobColorManager.set_job_color(self.window, job_item, job.status)
+                    
+                    # Add action buttons for jobs
+                    job_buttons = self.window.job_manager.create_job_buttons(proj_id, job.id, job.status)
+                    self.window.tree.setItemWidget(job_item, 1, job_buttons)
 
                     key = (proj_id, job.id)
                     if key not in self.window.job_status_workers:
@@ -487,6 +585,37 @@ class ProjectManager:
         if proj_id not in self.manually_collapsed_projects:
             if not proj_item.isExpanded():
                 proj_item.setExpanded(True)
+        
+        # Check if we need to select a specific pipeline or job after refresh
+        if hasattr(self.window, 'pending_selection') and self.window.pending_selection:
+            sel_type, sel_proj_id, sel_id = self.window.pending_selection
+            if sel_proj_id == proj_id:
+                if sel_type == 'pipeline':
+                    # Find and select the pipeline
+                    for i in range(proj_item.childCount()):
+                        child = proj_item.child(i)
+                        pipeline_id = child.data(0, Qt.ItemDataRole.UserRole + 1)
+                        if pipeline_id == sel_id:
+                            # Expand the pipeline and select its first job
+                            child.setExpanded(True)
+                            if child.childCount() > 0:
+                                first_job = child.child(0)
+                                self.window.tree.setCurrentItem(first_job)
+                                self.window.job_manager.on_item_clicked(first_job, 0)
+                            break
+                elif sel_type == 'job':
+                    # Find and select the job
+                    for i in range(proj_item.childCount()):
+                        pipeline_child = proj_item.child(i)
+                        for j in range(pipeline_child.childCount()):
+                            job_child = pipeline_child.child(j)
+                            data = job_child.data(0, Qt.ItemDataRole.UserRole)
+                            if data and len(data) == 2 and data[1] == sel_id:
+                                self.window.tree.setCurrentItem(job_child)
+                                self.window.job_manager.on_item_clicked(job_child, 0)
+                                break
+                # Clear the pending selection
+                self.window.pending_selection = None
 
     def update_pipeline_jobs(self, pipeline_item, jobs, proj_id, pipeline=None):
         """Update jobs in an existing pipeline"""
@@ -507,13 +636,18 @@ class ProjectManager:
                         expected_text = f"{job.name} - {job.status}"
                         if child.text(0) != expected_text:
                             child.setText(0, expected_text)
-                            from .job_manager import JobColorManager
-                            JobColorManager.set_job_color(self.window, child, job.status)
+                        
+                        from .job_manager import JobColorManager
+                        JobColorManager.set_job_color(self.window, child, job.status)
                         
                         # Update tooltip with job timestamps
                         tooltip = format_job_tooltip(job)
                         if tooltip:
                             child.setToolTip(0, tooltip)
+                        
+                        # Always update action buttons to reflect current status
+                        job_buttons = self.window.job_manager.create_job_buttons(proj_id, job.id, job.status)
+                        self.window.tree.setItemWidget(child, 1, job_buttons)
                         break
             else:
                 job_item = QTreeWidgetItem(pipeline_item, [f"{job.name} - {job.status}"])
@@ -526,6 +660,10 @@ class ProjectManager:
 
                 from .job_manager import JobColorManager
                 JobColorManager.set_job_color(self.window, job_item, job.status)
+                
+                # Add action buttons for new jobs
+                job_buttons = self.window.job_manager.create_job_buttons(proj_id, job.id, job.status)
+                self.window.tree.setItemWidget(job_item, 1, job_buttons)
 
                 key = (proj_id, job.id)
                 if key not in self.window.job_status_workers:
