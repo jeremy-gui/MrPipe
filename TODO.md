@@ -22,6 +22,7 @@
 - [ ] **History information**: In the "project" selection, show the latest pipelines
 - [ ] **Information for jobs failed due to a YAML syntax error**:
 - [ ] **GitHub workflows**: Adapt the application to also support GitHub Actions workflows
+- [ ] **Secure token storage**: Store the GitLab token in the OS keychain (keyring) instead of plain text in the .ini file
 
 ### Interface improvements (ui)
 - [ ] **Alternating colors**: Use alternating color shades for pipelines of the same project for better visual differentiation

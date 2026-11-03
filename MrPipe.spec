@@ -103,7 +103,7 @@ app = BUNDLE(
         'CFBundleIdentifier': 'com.mrpipe.app',
         'CFBundleVersion': '1.1.0',
         'CFBundleShortVersionString': '1.1',
-        'NSHumanReadableCopyright': 'Copyright © 2024 Mr. Pipe. All rights reserved.',
+        'NSHumanReadableCopyright': 'Copyright © 2025 Jérémy Couderc Guillaume. MIT License.',
         'LSMinimumSystemVersion': '10.12',
         'CFBundleExecutable': 'Mr. Pipe',
     }

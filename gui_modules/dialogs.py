@@ -350,7 +350,7 @@ class AboutDialog(QDialog):
         license_text = QTextEdit()
         license_text.setPlainText("""MIT License
 
-Copyright (c) 2024 Jérémy Couderc Guillaume
+Copyright (c) 2025 Jérémy Couderc Guillaume
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

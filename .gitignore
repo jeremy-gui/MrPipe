@@ -140,3 +140,5 @@ Mr. Pipe.app/
 *.dmg
 *.pkg
 test_config.ini
+Thumbs.db*
+error rapport

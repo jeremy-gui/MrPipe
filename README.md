@@ -1,6 +1,10 @@
 # Mr. Pipe - GitLab Pipelines Manager
 
-A desktop application to manage GitLab pipelines for multiple projects.
+A desktop application to monitor and control GitLab CI/CD pipelines across multiple projects, without keeping the GitLab web interface open.
+
+It is for developers who follow the pipelines of several projects day to day.
+
+Built with Python, PyQt6 and python-gitlab, and packaged with PyInstaller for Windows and macOS.
 
 ## Features
 
@@ -8,26 +12,18 @@ A desktop application to manage GitLab pipelines for multiple projects.
 - Display all jobs of the pipeline with their status, updated in real-time.
 - View logs of selected jobs on the right panel, updated in real-time.
 - Manual job launching with visual feedback.
+- Start, retry and cancel jobs and pipelines, with timestamps and target environments displayed.
 - **Hipster Pipe**: Celebration animation when pipelines succeed (optional feature).
 
 ## Hipster Pipe Feature
 
-Mr. Pipe includes a special "Hipster Pipe" feature that plays a celebration video when a pipeline job changes from "running" to "success":
+Mr. Pipe includes a "Hipster Pipe" feature that plays a short video when a pipeline succeeds or fails. The videos are in `assets/` and are included in the packaged applications.
 
-### Setup
-1. Place an `animation.mp4` file in the same directory as the application
-2. Go to Settings > Configure
-3. Check the "Hipster Pipe (celebration animation on success)" option
-4. The animation will automatically play when pipelines succeed
-
-### For Packaged Applications
-The video file is automatically included when building the application with the provided build scripts.
-
-**Note**: If `animation.mp4` is not present, the feature will be silently disabled.
+To enable it, go to Settings > Configure and set the "Hipster Pipe" option to "Yes" or "Yes with sound".
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.9+ (the Windows build was tested with Python 3.12)
 - PyQt6
 - python-gitlab
 
@@ -50,7 +46,7 @@ The video file is automatically included when building the application with the 
    - Go to Settings > Configure
    - Enter your GitLab URL (e.g., https://gitlab.com)
    - Enter your private access token
-   - Enter project IDs separated by commas
+   - Select the projects to monitor (up to 10)
 
 3. The left panel will show projects and their latest pipelines with jobs.
 4. Click on a job to view its log on the right panel.
@@ -76,34 +72,27 @@ To create a native macOS application (.app) that shows "Mr. Pipe" in the menu ba
 
 4. Copy `Mr. Pipe.app` to your Applications folder.
 
-**Note**: The app will use the `logo.png` file in the project root as its icon.
+**Note**: The script deletes the existing `build` and `dist` folders first.
 
 ### Windows Executable
 
 To create a Windows executable (.exe) that runs on any Windows system:
 
-1. **Prepare the icon** (if not already done):
-   ```bash
-   # Convert PNG to ICO (requires Pillow)
-   pip install Pillow
-   python3 -c "from PIL import Image; Image.open('logo.png').save('logo.ico', format='ICO', sizes=[(16,16), (32,32), (48,48), (64,64), (128,128), (256,256)])"
-   ```
-
-2. Install PyInstaller:
+1. Install PyInstaller:
    ```bash
    pip install pyinstaller
    ```
 
-3. Run the Windows build script:
+2. Run the Windows build script (it deletes the existing `build` and `dist` folders first):
    ```bash
    ./build_windows.sh
    ```
 
-4. The `Mr. Pipe.exe` will be created in the `dist` folder.
+3. The `Mr. Pipe.exe` will be created in the `dist` folder.
 
-5. Copy `Mr. Pipe.exe` to any Windows system - it runs without installation!
+4. Copy `Mr. Pipe.exe` to another Windows system - it runs without installation.
 
-**Note**: The executable includes all dependencies and will work on Windows 7+. It will show proper version information and use your logo as the application icon.
+**Note**: The executable includes all dependencies and uses `assets/logo.ico` as its icon.
 
 ## Notes
 
@@ -111,3 +100,11 @@ To create a Windows executable (.exe) that runs on any Windows system:
 - Log updates every second when a job is selected.
 - Ensure your token has read access to the projects.
 - Manual jobs can be launched directly from the interface.
+
+## Roadmap
+
+Planned work is listed in [TODO.md](TODO.md).
+
+## License
+
+Mr. Pipe is released under the [MIT License](LICENSE).
