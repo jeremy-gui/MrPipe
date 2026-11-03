@@ -21,6 +21,7 @@
 - [ ] **Informations du job** : Afficher les détails du job lorsqu'il est sélectionné
 - [ ] **Informations de l'historique** : dans la selection "projet" afficher les denieres piepline.
 - [ ] **Informations job failer car syntax erreur yaml** :
+- [ ] **GitHub workflows** : Adapter l'application pour gérer aussi les workflows GitHub Actions
 
 ### Améliorations d'interface (ui)
 - [ ] **Alternance de couleurs** : Utiliser des nuances de couleurs alternées pour les pipelines d'un même projet pour une meilleure différenciation visuelle
